@@ -1,0 +1,343 @@
+.electrical-specification {
+  padding: 30px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.spec-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.spec-header {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 3px solid #3498db;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  padding: 20px 25px;
+  border-radius: 8px 8px 0 0;
+  margin: -30px -30px 30px -30px;
+}
+
+.spec-header h3 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spec-summary {
+  display: flex;
+  gap: 20px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.summary-item .label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.summary-item .value {
+  font-size: 18px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.spec-warning {
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.spec-warning strong {
+  color: #856404;
+}
+
+.spec-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.spec-group {
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.spec-group:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-color: #3498db;
+}
+
+.group-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  padding: 18px 20px;
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.group-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.group-stats {
+  display: flex;
+  gap: 15px;
+  font-size: 14px;
+  color: #666;
+}
+
+.group-items {
+  padding: 0;
+}
+
+.spec-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.2s;
+}
+
+.spec-item:last-child {
+  border-bottom: none;
+}
+
+.spec-item:hover {
+  background: #f8f9fa;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.item-position {
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.item-details {
+  display: flex;
+  gap: 15px;
+  font-size: 13px;
+  color: #666;
+}
+
+.item-symbol {
+  font-size: 13px;
+  color: #666;
+}
+
+.item-status {
+  flex-shrink: 0;
+}
+
+.status-active {
+  background: #d4edda;
+  color: #155724;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.empty-state p {
+  margin: 10px 0;
+}
+
+.hint {
+  font-style: italic;
+  color: #999;
+}
+
+.spec-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+  justify-content: center;
+}
+
+/* Стили кнопок наследуются из index.css */
+
+.error-message {
+  background: #ffeaea;
+  color: #e74c3c;
+  padding: 15px;
+  border-radius: 6px;
+  margin: 20px 0;
+  border: 1px solid #f5c6cb;
+  text-align: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-style: italic;
+}
+
+.project-name {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.spec-table-container {
+  overflow-x: auto;
+  margin: 15px 0;
+}
+
+.spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.spec-table th {
+  background: #f8f9fa;
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #2c3e50;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.spec-table td {
+  padding: 10px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.spec-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.spec-table .text-center {
+  text-align: center;
+}
+
+.spec-table .text-right {
+  text-align: right;
+}
+
+.spec-table .item-name {
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.spec-table .item-spec {
+  color: #666;
+  font-size: 13px;
+}
+
+.spec-table .cable-info {
+  margin-top: 4px;
+  color: #888;
+  font-size: 12px;
+}
+
+.spec-table .item-notes {
+  margin-top: 4px;
+  color: #888;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.spec-table tfoot {
+  background: #f8f9fa;
+  font-weight: 600;
+}
+
+.spec-table tfoot td {
+  padding: 12px 10px;
+  border-top: 2px solid #dee2e6;
+}
+
+.recommendations {
+  margin-top: 30px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.recommendations h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+}
+
+.recommendations-text {
+  white-space: pre-wrap;
+  margin: 0;
+  color: #555;
+  line-height: 1.6;
+  font-family: inherit;
+}
+
+.spec-total {
+  margin-top: 30px;
+  padding: 20px;
+  background: #e8f4f8;
+  border-radius: 8px;
+  border: 2px solid #3498db;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+}
+
+.total-label {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.total-value {
+  font-weight: bold;
+  font-size: 24px;
+  color: #2980b9;
+}

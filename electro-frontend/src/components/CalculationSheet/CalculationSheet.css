@@ -1,0 +1,373 @@
+.calculation-sheet {
+  padding: 30px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sheet-header {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 3px solid #3498db;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  padding: 20px 25px;
+  border-radius: 8px 8px 0 0;
+  margin: -30px -30px 30px -30px;
+}
+
+.calculation-warning {
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.calculation-warning strong {
+  color: #856404;
+}
+
+.sheet-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.sheet-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sheet-date {
+  color: #666;
+  font-size: 14px;
+}
+
+.sheet-overview {
+  margin-bottom: 30px;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.overview-item {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  padding: 25px 20px;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.overview-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #3498db;
+}
+
+.overview-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.overview-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.calculation-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.calculation-section {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.section-header {
+  background: #f8f9fa;
+  padding: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.section-icon {
+  font-size: 20px;
+}
+
+.section-summary {
+  display: flex;
+  gap: 15px;
+  font-size: 14px;
+  color: #666;
+}
+
+.section-items {
+  padding: 0;
+}
+
+.calc-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.2s;
+}
+
+.calc-item:last-child {
+  border-bottom: none;
+}
+
+.calc-item:hover {
+  background: #f8f9fa;
+}
+
+.item-name {
+  font-weight: 500;
+  color: #2c3e50;
+  flex: 1;
+}
+
+.item-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  color: #666;
+}
+
+.item-position {
+  font-size: 11px;
+  color: #999;
+}
+
+.empty-section {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+}
+
+.sheet-footer {
+  border-top: 1px solid #e0e0e0;
+  padding-top: 20px;
+}
+
+.recommendations {
+  margin-bottom: 20px;
+}
+
+.recommendations h4 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+}
+
+.recommendations ul {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.6;
+  color: #555;
+}
+
+.recommendations li {
+  margin-bottom: 5px;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Стили кнопок наследуются из index.css */
+
+.error-message {
+  background: #ffeaea;
+  color: #e74c3c;
+  padding: 15px;
+  border-radius: 6px;
+  margin: 20px 0;
+  border: 1px solid #f5c6cb;
+  text-align: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-style: italic;
+}
+
+.project-name {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+.calculation-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  font-size: 14px;
+}
+
+.calculation-table th {
+  background: #f8f9fa;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #2c3e50;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.calculation-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.calculation-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.calculation-table .text-center {
+  text-align: center;
+}
+
+.calculation-table .text-right {
+  text-align: right;
+}
+
+.calculation-table .total-row {
+  background: #f8f9fa;
+  font-weight: 600;
+}
+
+.calculation-table .total-row td {
+  border-top: 2px solid #dee2e6;
+  padding: 15px 12px;
+}
+
+.room-calculations,
+.financial-calculations,
+.appliance-summaries,
+.technical-specifications,
+.compliance-warnings {
+  margin: 30px 0;
+  padding: 25px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.room-calculations:hover,
+.financial-calculations:hover,
+.appliance-summaries:hover,
+.technical-specifications:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-color: #3498db;
+}
+
+.room-calculations h4,
+.financial-calculations h4,
+.appliance-summaries h4,
+.technical-specifications h4,
+.compliance-warnings h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+}
+
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+}
+
+.spec-item {
+  background: white;
+  padding: 18px;
+  border-radius: 10px;
+  border: 1px solid #dee2e6;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.spec-item:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: #3498db;
+  transform: translateY(-1px);
+}
+
+.spec-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.spec-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.spec-note {
+  font-size: 12px;
+  color: #e67e22;
+  margin-top: 5px;
+  font-style: italic;
+}
+
+.compliance-warnings {
+  background: #fff3cd;
+  border-color: #ffc107;
+}
+
+.warnings-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.warning-item {
+  margin-bottom: 10px;
+  color: #856404;
+  line-height: 1.5;
+}

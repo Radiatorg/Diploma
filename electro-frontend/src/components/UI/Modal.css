@@ -1,0 +1,124 @@
+/* Конструктивизм дизайн для модальных окон */
+:root {
+  --construct-bg: #ffffff;
+  --construct-border: #000000;
+  --construct-text: #000000;
+  --construct-accent: #ff0000;
+  --construct-shadow: rgba(0, 0, 0, 0.2);
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.modal-container {
+  background: var(--construct-bg);
+  border: 3px solid var(--construct-border);
+  border-radius: 8px;
+  width: 95%;
+  max-width: 900px;
+  box-shadow: 8px 8px 0 var(--construct-shadow);
+  overflow: hidden;
+  animation: modalSlideUp 0.2s ease-out;
+}
+
+.modal-mini {
+  max-width: 500px;
+}
+
+.modal-container.modal-wide {
+  max-width: 1200px;
+}
+
+.modal-header {
+  padding: 1.5rem 2rem;
+  background: var(--construct-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 3px solid var(--construct-border);
+  box-shadow: none;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.3rem;
+  color: var(--construct-text);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: none;
+}
+
+.close-x {
+  background: var(--construct-bg);
+  border: 2px solid var(--construct-border);
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--construct-text);
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 2px 0 var(--construct-shadow);
+  transition: all 0.15s;
+}
+
+.close-x:hover {
+  box-shadow: inset 2px 2px 0 var(--construct-shadow);
+  transform: translate(1px, 1px);
+}
+
+.modal-body {
+  padding: 2rem;
+  color: var(--construct-text);
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.modal-footer {
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: var(--construct-bg);
+  border-top: 3px solid var(--construct-border);
+  box-shadow: none;
+}
+
+/* Стили кнопок в модальном окне наследуются из index.css */
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.modal-footer .btn-primary,
+.modal-footer .btn-secondary,
+.modal-footer .btn-danger {
+  min-width: 140px;
+  height: 42px;
+}
+
+@keyframes modalSlideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,1113 @@
+/* Неоморфизм стиль - тусклые цвета */
+:root {
+  --neomorph-bg: #d4d8dd;
+  --neomorph-shadow-light: #f5f7fa;
+  --neomorph-shadow-dark: #b8bcc2;
+  --neomorph-text: #2c3e50;
+  --neomorph-accent: #5a6fd8;
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-blue: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.project-detail {
+  padding: 2rem;
+  padding-bottom: 4rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  min-height: calc(100vh - 200px);
+  background: var(--neomorph-bg);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 1rem;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.header-content {
+  flex: 1;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  color: #667eea;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s;
+  margin-bottom: 1rem;
+  background: #f8f9fa;
+}
+
+.back-btn:hover {
+  background: #e9ecef;
+  color: #764ba2;
+  transform: translateX(-2px);
+}
+
+.back-icon {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.project-title-section {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.project-label {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.project-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2.5rem;
+  color: #111;
+  font-weight: 700;
+}
+
+.project-description {
+  color: var(--neomorph-text);
+  opacity: 0.7;
+  font-size: 1.1rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.project-header-actions {
+  display: flex;
+  gap: 1rem;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Стили кнопок наследуются из index.css */
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: none;
+  margin-bottom: 2rem;
+  overflow-x: auto;
+  box-shadow: 
+    0 4px 8px var(--neomorph-shadow-dark),
+    inset 0 -1px 0 rgba(184, 188, 194, 0.3);
+  background: var(--neomorph-bg);
+  border-radius: 12px 12px 0 0;
+  padding: 0.5rem;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  background: var(--neomorph-bg);
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--neomorph-text);
+  opacity: 0.7;
+  transition: all 0.3s;
+  white-space: nowrap;
+  font-weight: 500;
+  border-radius: 8px;
+  box-shadow: 
+    4px 4px 8px var(--neomorph-shadow-dark),
+    -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.tab:hover {
+  color: var(--neomorph-accent);
+  opacity: 1;
+  box-shadow: 
+    inset 2px 2px 4px var(--neomorph-shadow-dark),
+    inset -2px -2px 4px var(--neomorph-shadow-light);
+}
+
+.tab.active {
+  color: var(--neomorph-accent);
+  border-bottom-color: var(--neomorph-accent);
+  opacity: 1;
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.tab-content {
+  min-height: 400px;
+}
+
+.tab-panel {
+  animation: fadeIn 0.3s;
+}
+
+.reports-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.report-section {
+  width: 100%;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.panel-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: #2c3e50;
+  font-size: 1.75rem;
+}
+
+.panel-hint {
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+/* Стили кнопок наследуются из index.css */
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--neomorph-bg);
+  border-radius: 20px;
+  box-shadow: 
+    8px 8px 16px var(--neomorph-shadow-dark),
+    -8px -8px 16px var(--neomorph-shadow-light);
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  color: #2c3e50;
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+}
+
+.empty-state p {
+  color: #666;
+  margin: 0 0 2rem 0;
+  font-size: 1.1rem;
+}
+
+.appliances-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.appliances-catalog-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.appliance-catalog-card {
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: row;
+  border: none;
+  position: relative;
+  min-height: 180px;
+  width: 100%;
+}
+
+.appliance-catalog-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: var(--gradient-primary);
+  opacity: 0;
+  transition: opacity 0.4s;
+  z-index: 1;
+}
+
+.appliance-catalog-card:hover::before {
+  opacity: 1;
+}
+
+.appliance-catalog-card:hover {
+  box-shadow: 
+    0 20px 60px rgba(102, 126, 234, 0.25),
+    0 10px 30px rgba(102, 126, 234, 0.15);
+  transform: translateX(4px) scale(1.01);
+}
+
+.appliance-catalog-card .appliance-image-container {
+  width: 240px;
+  min-width: 240px;
+  height: 100%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.appliance-catalog-card .appliance-image-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.05) 100%);
+  pointer-events: none;
+}
+
+.appliance-catalog-card .appliance-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: block;
+}
+
+.appliance-catalog-card:hover .appliance-image {
+  transform: scale(1.15);
+}
+
+.appliance-catalog-card .appliance-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.appliance-catalog-card .appliance-image-placeholder::before {
+  content: '';
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  backdrop-filter: blur(10px);
+}
+
+.appliance-catalog-card .appliance-image-placeholder span {
+  font-size: 4rem;
+  opacity: 0.9;
+  color: white;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.appliance-catalog-card .appliance-content {
+  padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  background: linear-gradient(to bottom, #ffffff, #fafbfc);
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  gap: 1.5rem;
+}
+
+.appliance-catalog-card .appliance-content-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.appliance-catalog-card .card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.appliance-catalog-card .appliance-content h3 {
+  margin: 0 0 0.5rem 0;
+  color: #1a1a1a;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.appliance-catalog-card .appliance-specs {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #f1f5f9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.appliance-catalog-card .spec-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(102, 126, 234, 0.1);
+  min-width: 180px;
+  flex: 1;
+}
+
+.appliance-catalog-card .spec-item:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+  transform: translateX(4px);
+  border-color: rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.appliance-catalog-card .spec-label {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.appliance-catalog-card .spec-value {
+  color: #111;
+  font-weight: 700;
+  font-size: 1rem;
+  background: none;
+  -webkit-text-fill-color: #111;
+}
+
+.rooms-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.rooms-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rooms-table th {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+  color: #2c3e50;
+  border-bottom: 2px solid #dee2e6;
+  font-size: 0.95rem;
+}
+
+.rooms-table td {
+  padding: 15px;
+  border-bottom: 1px solid #e0e0e0;
+  color: #2c3e50;
+  vertical-align: middle;
+}
+
+.rooms-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.rooms-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.description-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-link {
+  color: #4a90e2;
+  text-decoration: none;
+  transition: color 0.2s;
+  cursor: pointer;
+}
+
+.notes-link:hover {
+  color: #357abd;
+  text-decoration: underline;
+}
+
+.notes-link.empty {
+  color: #999;
+  font-style: italic;
+}
+
+.notes-link.empty:hover {
+  color: #4a90e2;
+}
+
+.table-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Стили кнопок наследуются из index.css */
+
+.socket-groups-value {
+  display: inline-block;
+  margin-right: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.btn-edit-socket {
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-edit-socket:hover {
+  background: #f0f0f0;
+  border-color: #3498db;
+}
+
+.room-properties-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.property-section {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.property-section h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.property-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid #e0e0e0;
+  gap: 1rem;
+}
+
+.property-item:last-child {
+  border-bottom: none;
+}
+
+.property-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.property-value {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.property-input {
+  padding: 8px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #2c3e50;
+  transition: border-color 0.2s;
+  min-width: 200px;
+}
+
+.property-input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.appliances-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.appliance-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.appliance-checkbox:hover {
+  background: #f0f0f0;
+}
+
+.appliance-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.appliance-checkbox span {
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.no-appliances {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-style: italic;
+}
+
+.field-hint {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 5px 0;
+  font-style: italic;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.btn-add-group {
+  padding: 6px 12px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-add-group:hover {
+  background: #2980b9;
+}
+
+.socket-groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.socket-group-item {
+  padding: 12px;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.socket-group-item:hover {
+  border-color: #3498db;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.group-number {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.btn-remove-group {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.btn-remove-group:hover {
+  background: #c0392b;
+}
+
+.socket-group-item label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.socket-group-item select {
+  padding: 8px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.socket-group-item select:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.total-sockets-info {
+  margin-top: 15px;
+  padding: 10px;
+  background: #e8f4f8;
+  border-radius: 6px;
+  text-align: center;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.room-card,
+.appliance-card {
+  background: var(--neomorph-bg);
+  border-radius: 20px;
+  padding: 1.5rem;
+  box-shadow: 
+    8px 8px 16px var(--neomorph-shadow-dark),
+    -8px -8px 16px var(--neomorph-shadow-light);
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  border: none;
+}
+
+.room-card:hover,
+.appliance-card:hover {
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+  transform: translateY(2px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.25rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.room-type-badge {
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.card-body {
+  flex: 1;
+  margin-bottom: 1rem;
+}
+
+.room-info,
+.appliance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-label {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.info-value {
+  color: #2c3e50;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.room-description {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+  line-height: 1.5;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Стили кнопок наследуются из index.css (btn-primary, btn-secondary, btn-danger) */
+
+.calculation-report,
+.specification-report {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 
+    8px 8px 16px rgba(0, 0, 0, 0.1),
+    -8px -8px 16px rgba(255, 255, 255, 0.5);
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.pdf-btn {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+}
+
+.recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.recommendation-item {
+  background: rgba(90, 111, 216, 0.1);
+  padding: 1rem;
+  border-radius: 12px;
+  border-left: 4px solid var(--neomorph-accent);
+}
+
+.financial-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.financial-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem;
+  background: var(--neomorph-bg);
+  border-radius: 12px;
+  box-shadow: 
+    4px 4px 8px var(--neomorph-shadow-dark),
+    -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.financial-item.total {
+  background: linear-gradient(135deg, var(--neomorph-accent) 0%, #4a5fc7 100%);
+  color: white;
+  font-weight: 700;
+}
+
+.financial-label {
+  font-weight: 600;
+}
+
+.financial-value {
+  font-weight: 700;
+  color: var(--neomorph-accent);
+}
+
+.financial-item.total .financial-value {
+  color: white;
+}
+
+.recommendations-box {
+  background: rgba(90, 111, 216, 0.05);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border-left: 4px solid var(--neomorph-accent);
+}
+
+.recommendations-box p {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+.category-total {
+  background: rgba(90, 111, 216, 0.1);
+  font-weight: 700;
+}
+
+.calculation-report h2,
+.specification-report h2 {
+  margin: 0 0 1.5rem 0;
+  color: #2c3e50;
+  font-size: 1.75rem;
+}
+
+.report-section {
+  margin-bottom: 2rem;
+}
+
+.report-section h3 {
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+}
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, var(--neomorph-accent) 0%, #4a5fc7 100%);
+  color: white;
+  padding: 1.5rem;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 
+    6px 6px 12px var(--neomorph-shadow-dark),
+    -6px -6px 12px var(--neomorph-shadow-light);
+}
+
+.stat-card .stat-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  background: var(--neomorph-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 
+    4px 4px 8px var(--neomorph-shadow-dark),
+    -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.report-table th,
+.report-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.report-table th {
+  background: var(--neomorph-bg);
+  font-weight: 600;
+  color: var(--neomorph-text);
+  font-size: 0.95rem;
+  box-shadow: 
+    inset 2px 2px 4px var(--neomorph-shadow-dark),
+    inset -2px -2px 4px var(--neomorph-shadow-light);
+}
+
+.report-table tr:hover {
+  background: rgba(90, 111, 216, 0.05);
+}
+
+.report-table tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 768px) {
+  .project-detail {
+    padding: 1rem;
+  }
+
+  .project-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .project-header h1 {
+    font-size: 2rem;
+  }
+
+  .project-header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .project-header-actions .btn-primary,
+  .project-header-actions .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rooms-grid,
+  .appliances-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .appliance-catalog-card {
+    flex-direction: column;
+    min-height: auto;
+  }
+  
+  .appliance-catalog-card .appliance-image-container {
+    width: 100%;
+    height: 200px;
+    min-width: auto;
+  }
+  
+  .appliance-catalog-card .appliance-specs {
+    flex-direction: column;
+  }
+  
+  .appliance-catalog-card .spec-item {
+    min-width: auto;
+    flex: none;
+  }
+
+  .appliance-catalog-card .appliance-content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .appliance-catalog-card .card-actions {
+    flex-direction: row;
+    width: 100%;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 2px solid #f1f5f9;
+  }
+
+  .appliance-catalog-card .card-actions .btn-secondary,
+  .appliance-catalog-card .card-actions .btn-danger {
+    flex: 1;
+  }
+
+  .appliance-catalog-card .card-actions .btn-secondary,
+  .appliance-catalog-card .card-actions .btn-danger {
+    width: 100%;
+  }
+}

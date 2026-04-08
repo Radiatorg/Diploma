@@ -1,0 +1,390 @@
+.floor-plan-3d-page {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0f1115;
+  color: #e9edf5;
+}
+
+.floor-plan-3d-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #2a2f3b;
+  background: #141824;
+}
+
+.floor-plan-3d-header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.floor-plan-3d-header p {
+  margin: 0;
+  color: #a5b2ca;
+  font-size: 0.9rem;
+}
+
+.floor-plan-3d-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.floor-plan-3d-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 430px 1fr;
+  min-height: 0;
+}
+
+.floor-plan-3d-panel {
+  border-right: 1px solid #2a2f3b;
+  background: #151a26;
+  padding: 1.15rem;
+  font-size: 1.02rem;
+  overflow: auto;
+}
+
+.floor-plan-3d-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+}
+
+.floor-plan-3d-panel h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.05rem;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.tool-btn {
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #dbeafe;
+  border-radius: 8px;
+  padding: 0.58rem 0.68rem;
+  cursor: pointer;
+  font-size: 0.96rem;
+}
+
+.tool-btn.active {
+  border-color: #38bdf8;
+  background: #0b2a3a;
+}
+
+.editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.7rem;
+}
+
+.editor-field label {
+  font-size: 0.93rem;
+  color: #b9c7e2;
+}
+
+.editor-field input,
+.editor-field select {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0b1120;
+  color: #e2e8f0;
+  min-height: 38px;
+  padding: 0 0.62rem;
+  font-size: 0.95rem;
+}
+
+.route-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.floor-plan-3d-panel ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.floor-plan-3d-tip {
+  margin-top: 1rem;
+  background: #1f2635;
+  border: 1px solid #2b3650;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.96rem;
+  color: #c3d2ef;
+}
+
+.floor-plan-3d-canvas {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 24px 24px,
+    #101521;
+}
+
+.three-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.camera-mode-bar {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.camera-mode-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.96);
+  border-radius: 999px;
+  border: 1px solid #273549;
+  padding: 0.4rem 0.9rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.9);
+  pointer-events: auto;
+}
+
+.camera-mode-label {
+  font-size: 0.85rem;
+  color: #cbd5f5;
+  white-space: nowrap;
+}
+
+.camera-mode-buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.floor-plan-3d-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.floor-plan-3d-modal {
+  width: 100%;
+  max-width: 520px;
+  background: #0b1120;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.9);
+  padding: 1.4rem 1.6rem 1.2rem;
+  color: #e5e7eb;
+}
+
+.floor-plan-3d-modal h2 {
+  margin: 0 0 0.7rem;
+  font-size: 1.1rem;
+}
+
+.floor-plan-3d-modal p {
+  margin: 0.3rem 0;
+  font-size: 0.95rem;
+  color: #cbd5f5;
+}
+
+.floor-plan-3d-modal-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.floor-plan-3d-placeholder {
+  max-width: 720px;
+  text-align: center;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid #33415f;
+  background: rgba(18, 24, 37, 0.9);
+}
+
+.floor-plan-3d-error {
+  border-color: #8e3c43;
+  color: #ffd7db;
+}
+
+.validation-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.existing-routes-list {
+  margin-top: 0.85rem;
+}
+
+.existing-routes-list h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  color: #c9d8f7;
+}
+
+.route-node-editor {
+  margin: 0.9rem 0;
+}
+
+.route-node-editor h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.98rem;
+  color: #c9d8f7;
+}
+
+.route-node-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.route-node-row {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr 1fr 28px 28px;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.route-node-row input {
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0b1220;
+  color: #dbeafe;
+  min-height: 28px;
+  padding: 0 0.3rem;
+  font-size: 0.88rem;
+}
+
+.route-node-index {
+  font-size: 0.78rem;
+  color: #b6c4df;
+}
+
+.mini-btn {
+  min-height: 28px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #102544;
+  color: #dbeafe;
+  cursor: pointer;
+}
+
+.mini-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.existing-routes-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.route-item-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.5rem 0.62rem;
+  background: #0b1220;
+  color: #dbeafe;
+  cursor: pointer;
+  font-size: 0.94rem;
+}
+
+.route-item-btn.active {
+  border-color: #60a5fa;
+  background: #102544;
+}
+
+.floor-plan-3d-overlay {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  color: #dbeafe;
+}
+
+.cursor-context-panel {
+  position: absolute;
+  z-index: 65;
+  pointer-events: none;
+  min-width: 190px;
+  max-width: 260px;
+  background: rgba(9, 14, 24, 0.94);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.45);
+  padding: 0.45rem 0.55rem;
+  color: #dbeafe;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.room-list-panel,
+.room-geometry-panel,
+.room-plan-panel {
+  margin-bottom: 0.9rem;
+}
+
+.room-view-modes {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  background: #111827;
+  border: 1px solid #273549;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #cbd5f5;
+}
+
+.room-view-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.room-view-note {
+  font-size: 0.84rem;
+  color: #9ca3af;
+}
+
+.room-list-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 170px;
+  overflow: auto;
+}

@@ -1,0 +1,60 @@
+.dimensions-preview-container {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--neomorph-bg);
+  border-radius: 12px;
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.dimensions-preview-container h4 {
+  margin: 0 0 1rem 0;
+  color: var(--neomorph-text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.dimensions-preview-canvas {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 
+    4px 4px 8px var(--neomorph-shadow-dark),
+    -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.dimensions-preview-empty {
+  margin-top: 1rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--neomorph-text);
+  opacity: 0.6;
+  font-size: 0.9rem;
+  background: var(--neomorph-bg);
+  border-radius: 12px;
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

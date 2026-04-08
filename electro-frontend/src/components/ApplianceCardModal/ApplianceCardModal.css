@@ -1,0 +1,100 @@
+/* Просмотр прибора в каталоге: те же поля, что в админ-форме, только чтение */
+:root {
+  --neomorph-bg: #d4d8dd;
+  --neomorph-shadow-light: #f5f7fa;
+  --neomorph-shadow-dark: #b8bcc2;
+  --neomorph-text: #2c3e50;
+}
+
+.appliance-readonly-modal {
+  max-height: min(72vh, 820px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.25rem;
+}
+
+.appliance-ro-value {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  background: var(--neomorph-bg);
+  color: var(--neomorph-text);
+  box-shadow:
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.appliance-ro-multiline {
+  white-space: pre-wrap;
+  line-height: 1.45;
+  display: block;
+  width: 100%;
+}
+
+.appliance-ro-categories {
+  align-items: flex-start;
+}
+
+.appliance-ro-category-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.appliance-ro-cat-tag {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(90, 111, 216, 0.12);
+  color: var(--neomorph-text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.appliance-ro-photo-panel {
+  cursor: pointer;
+}
+
+.appliance-readonly-modal .appliance-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 220px;
+  padding: 1rem;
+  font-size: 0.95rem;
+  color: var(--neomorph-text);
+  opacity: 0.75;
+}
+
+.appliance-ro-photo-panel:focus {
+  outline: 2px solid #5a6fd8;
+  outline-offset: 2px;
+}
+
+.appliance-ro-mfr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--neomorph-text);
+  font-weight: 600;
+}
+
+.appliance-ro-mfr-link:hover {
+  text-decoration: underline;
+  color: #c62828;
+}
+
+.appliance-ro-mfr-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}

@@ -1,0 +1,97 @@
+/* Админ панель навигации */
+.admin-nav-panel {
+  background: var(--neomorph-bg);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 
+    8px 8px 16px var(--neomorph-shadow-dark),
+    -8px -8px 16px var(--neomorph-shadow-light);
+}
+
+.admin-nav-panel h2 {
+  margin: 0 0 1.25rem 0;
+  color: var(--neomorph-text);
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.admin-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.5rem;
+  background: var(--neomorph-bg);
+  color: var(--neomorph-text);
+  text-decoration: none;
+  border-radius: 12px;
+  font-weight: 500;
+  transition: all 0.3s;
+  box-shadow: 
+    4px 4px 8px var(--neomorph-shadow-dark),
+    -4px -4px 8px var(--neomorph-shadow-light);
+  font-size: 0.95rem;
+}
+
+.admin-nav-link:hover {
+  color: var(--neomorph-accent);
+  box-shadow: 
+    inset 2px 2px 4px var(--neomorph-shadow-dark),
+    inset -2px -2px 4px var(--neomorph-shadow-light);
+  transform: translateY(1px);
+}
+
+.admin-nav-link.active {
+  background: linear-gradient(135deg, var(--neomorph-accent) 0%, #4a5fc7 100%);
+  color: white;
+  box-shadow: 
+    inset 2px 2px 4px rgba(0, 0, 0, 0.2),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.1);
+}
+
+.admin-nav-link.active:hover {
+  box-shadow: 
+    inset 4px 4px 8px rgba(0, 0, 0, 0.3),
+    inset -4px -4px 8px rgba(255, 255, 255, 0.15);
+}
+
+.admin-nav-icon {
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .admin-nav-links {
+    flex-direction: column;
+  }
+
+  .admin-nav-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

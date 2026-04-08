@@ -1,0 +1,126 @@
+/* Неоморфизм стиль для Auth - тусклые цвета */
+:root {
+  --neomorph-bg: #d4d8dd;
+  --neomorph-shadow-light: #f5f7fa;
+  --neomorph-shadow-dark: #b8bcc2;
+  --neomorph-text: #2c3e50;
+  --neomorph-accent: #5a6fd8;
+}
+
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+  padding: 2rem;
+  background: var(--neomorph-bg);
+}
+
+.auth-card {
+  background: var(--neomorph-bg);
+  padding: 2.5rem;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 660px;
+  box-shadow: 
+    20px 20px 60px var(--neomorph-shadow-dark),
+    -20px -20px 60px var(--neomorph-shadow-light);
+}
+
+.auth-card h2 {
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: var(--neomorph-text);
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--neomorph-text);
+  font-weight: 500;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  background: var(--neomorph-bg);
+  color: var(--neomorph-text);
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+  transition: all 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  box-shadow: 
+    inset 6px 6px 12px var(--neomorph-shadow-dark),
+    inset -6px -6px 12px var(--neomorph-shadow-light);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, var(--neomorph-accent) 0%, #4a5fc7 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 
+    6px 6px 12px var(--neomorph-shadow-dark),
+    -6px -6px 12px var(--neomorph-shadow-light);
+}
+
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 
+    inset 4px 4px 8px rgba(0, 0, 0, 0.2),
+    inset -4px -4px 8px rgba(255, 255, 255, 0.1);
+  transform: translateY(1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.error-message {
+  background: rgba(198, 40, 40, 0.1);
+  color: #c62828;
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  box-shadow: 
+    inset 4px 4px 8px var(--neomorph-shadow-dark),
+    inset -4px -4px 8px var(--neomorph-shadow-light);
+}
+
+.auth-link {
+  text-align: center;
+  margin-top: 1rem;
+  color: var(--neomorph-text);
+  opacity: 0.7;
+}
+
+.auth-link a {
+  color: var(--neomorph-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.auth-link a:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,148 @@
+.floor-plan-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #f5f5f5;
+  padding: 20px;
+}
+
+.canvas-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  background: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.canvas-toolbar button {
+  padding: 0.625rem 1rem;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #2c3e50;
+  transition: all 0.2s;
+  border: 1px solid #ddd;
+}
+
+.canvas-toolbar button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.canvas-toolbar button.active {
+  background: #3498db;
+  color: #fff;
+  border-color: #3498db;
+}
+
+.canvas-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.floor-plan-data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.data-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.data-section h3 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.rooms-list,
+.walls-list,
+.points-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-item,
+.wall-item,
+.point-item {
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fff;
+}
+
+.room-item:hover,
+.wall-item:hover,
+.point-item:hover {
+  background: #f8f9fa;
+  border-color: #3498db;
+}
+
+.room-item.selected,
+.wall-item.selected,
+.point-item.selected {
+  background: #e3f2fd;
+  border-color: #3498db;
+  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
+}
+
+.room-name {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+
+.room-position {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.room-unplaced {
+  font-size: 0.9rem;
+  color: #e74c3c;
+  font-style: italic;
+}
+
+.wall-info {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+
+.wall-coords {
+  font-size: 0.9rem;
+  color: #666;
+  font-family: monospace;
+}
+
+.point-symbol {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+
+.point-position {
+  font-size: 0.9rem;
+  color: #666;
+  font-family: monospace;
+}
+
+.empty-message {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+}

@@ -1,0 +1,86 @@
+.tkp339-recommendations {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.recommendations-header h3 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+  font-size: 1.2rem;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 0 10px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.warnings-title {
+  color: #e74c3c;
+}
+
+.recommendations-title {
+  color: #3498db;
+}
+
+.icon {
+  font-size: 1.2rem;
+}
+
+.warnings-list,
+.recommendations-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.warning-item,
+.recommendation-item {
+  padding: 10px 15px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.warning-item {
+  background: #fee;
+  border-left: 4px solid #e74c3c;
+  color: #c33;
+}
+
+.recommendation-item {
+  background: #e8f4f8;
+  border-left: 4px solid #3498db;
+  color: #2c3e50;
+}
+
+.warning-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.appliance-name {
+  font-style: italic;
+  color: #a33;
+}
+
+
+
+
+
+
+
+
+
+

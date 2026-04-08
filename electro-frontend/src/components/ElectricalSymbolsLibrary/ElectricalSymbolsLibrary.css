@@ -1,0 +1,154 @@
+.electrical-symbols-library {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.symbols-library-header {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.symbols-library-header h3 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.symbols-info {
+  margin-top: 10px;
+}
+
+.symbols-library-subtitle {
+  margin: 0 0 10px 0;
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.symbols-usage-guide {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.usage-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.step-number {
+  background: #3498db;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.usage-tip {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #e8f4fd;
+  border-left: 3px solid #3498db;
+  font-size: 0.8rem;
+  color: #2c3e50;
+  border-radius: 0 4px 4px 0;
+}
+
+.symbols-library-filters {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-group label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.filter-group select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.symbols-library-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.symbol-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.symbol-item:hover {
+  border-color: #4a90e2;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.symbol-icon {
+  margin-bottom: 5px;
+}
+
+.symbol-name {
+  font-size: 12px;
+  text-align: center;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.symbol-type {
+  font-size: 10px;
+  color: #666;
+  text-align: center;
+}
+
+.symbols-library-empty {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
+.symbols-library-loading {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
