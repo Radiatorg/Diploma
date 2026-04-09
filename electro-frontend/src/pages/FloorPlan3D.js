@@ -375,57 +375,57 @@ const FloorPlan3D = () => {
   }, [ROOM_HEIGHT_M, WALL_INSET_M, getRoomBounds, hoveredWallFace, sceneData, selectedRoomId, surfaceMode, wallFaceMode]);
 
   const loadSceneData = useCallback(async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const floorPlanRes = await floorPlanAPI.get(projectId).catch(async (e) => {
-          if (e?.response?.status === 404) {
-            return floorPlanAPI.createOrUpdate(projectId, { width: 1000, height: 800, scale: 1.0 });
-          }
-          throw e;
-        });
-        if (!floorPlanRes?.data) {
-          throw new Error('План проекта не найден');
+    try {
+      setLoading(true);
+      setError('');
+      const floorPlanRes = await floorPlanAPI.get(projectId).catch(async (e) => {
+        if (e?.response?.status === 404) {
+          return floorPlanAPI.createOrUpdate(projectId, { width: 1000, height: 800, scale: 1.0 });
         }
-
-        const [roomsRes, wallsRes, pointsRes, routesRes, circuitsRes, appliancesRes, reportRes, savedRes] = await Promise.all([
-          roomAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          wallAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          electricalPointAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          cableRunAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          circuitAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          projectApplianceAPI.getByProject(projectId).catch(() => ({ data: [] })),
-          calculationAPI.getReport(projectId).catch(() => ({ data: null })),
-          savedSpecificationAPI.getAll(projectId).catch(() => ({ data: [] })),
-        ]);
-
-        const nextSceneData = {
-          floorPlan: floorPlanRes.data,
-          rooms: roomsRes.data || [],
-          walls: wallsRes.data || [],
-          points: pointsRes.data || [],
-          routes: routesRes.data || [],
-        };
-        setSceneData(nextSceneData);
-        setStats({
-          rooms: nextSceneData.rooms.length,
-          walls: nextSceneData.walls.length,
-          points: nextSceneData.points.length,
-          routes: nextSceneData.routes.length,
-        });
-        const loadedCircuits = circuitsRes.data || [];
-        setProjectAppliances(appliancesRes.data || []);
-        setCalculationReport(reportRes.data || null);
-        setSaved3DCalculations(savedRes.data || []);
-        setCircuits(loadedCircuits);
-        if (!selectedCircuitId && loadedCircuits.length > 0) {
-          setSelectedCircuitId(String(loadedCircuits[0].id));
-        }
-      } catch (e) {
-        setError('Не удалось загрузить данные 3D-редактора');
-      } finally {
-        setLoading(false);
+        throw e;
+      });
+      if (!floorPlanRes?.data) {
+        throw new Error('План проекта не найден');
       }
+
+      const [roomsRes, wallsRes, pointsRes, routesRes, circuitsRes, appliancesRes, reportRes, savedRes] = await Promise.all([
+        roomAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        wallAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        electricalPointAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        cableRunAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        circuitAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        projectApplianceAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        calculationAPI.getReport(projectId).catch(() => ({ data: null })),
+        savedSpecificationAPI.getAll(projectId).catch(() => ({ data: [] })),
+      ]);
+
+      const nextSceneData = {
+        floorPlan: floorPlanRes.data,
+        rooms: roomsRes.data || [],
+        walls: wallsRes.data || [],
+        points: pointsRes.data || [],
+        routes: routesRes.data || [],
+      };
+      setSceneData(nextSceneData);
+      setStats({
+        rooms: nextSceneData.rooms.length,
+        walls: nextSceneData.walls.length,
+        points: nextSceneData.points.length,
+        routes: nextSceneData.routes.length,
+      });
+      const loadedCircuits = circuitsRes.data || [];
+      setProjectAppliances(appliancesRes.data || []);
+      setCalculationReport(reportRes.data || null);
+      setSaved3DCalculations(savedRes.data || []);
+      setCircuits(loadedCircuits);
+      if (!selectedCircuitId && loadedCircuits.length > 0) {
+        setSelectedCircuitId(String(loadedCircuits[0].id));
+      }
+    } catch (e) {
+      setError('Не удалось загрузить данные 3D-редактора');
+    } finally {
+      setLoading(false);
+    }
   }, [projectId, selectedCircuitId, selectedRoomId]);
 
   useEffect(() => {
@@ -713,6 +713,16 @@ const FloorPlan3D = () => {
     return nearest;
   }, [ROOM_HEIGHT_M, WALL_INSET_M, parallelOffsetCm, toMeters, wallFaceMode]);
 
+  const selectedRoom = useMemo(
+    () => sceneData.rooms.find((room) => room.id === selectedRoomId) || null,
+    [sceneData.rooms, selectedRoomId]
+  );
+
+  const selectedRoomBounds = useMemo(
+    () => getRoomBounds(selectedRoom, sceneData.walls),
+    [getRoomBounds, sceneData.walls, selectedRoom]
+  );
+
   const snapPointToSurface = useCallback((point, preferredHeightCm = pointHeight) => {
     if (!point || !selectedRoomBounds) return null;
     const clampedX = Math.min(Math.max(point.x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M);
@@ -725,16 +735,6 @@ const FloorPlan3D = () => {
     }
     return getWallSnapPointFromBounds(new THREE.Vector3(clampedX, 0, clampedZ), selectedRoomBounds, Math.max(toMeters(preferredHeightCm), 0.05));
   }, [ROOM_HEIGHT_M, WALL_INSET_M, getWallSnapPointFromBounds, pointHeight, selectedRoomBounds, surfaceMode, toMeters]);
-
-  const selectedRoom = useMemo(
-    () => sceneData.rooms.find((room) => room.id === selectedRoomId) || null,
-    [sceneData.rooms, selectedRoomId]
-  );
-
-  const selectedRoomBounds = useMemo(
-    () => getRoomBounds(selectedRoom, sceneData.walls),
-    [getRoomBounds, sceneData.walls, selectedRoom]
-  );
 
   const selectedRoomPoints = useMemo(
     () => (selectedRoomId ? sceneData.points.filter((point) => point.roomId === selectedRoomId) : []),
@@ -1049,13 +1049,13 @@ const FloorPlan3D = () => {
     const nextNodes = routeNodesRef.current.map((node, i) =>
       i === idx
         ? {
-            ...node,
-            x: snapped.x,
-            y: snapped.z,
-            z: snapped.y,
-            pointId: snappedPointResult.pointId || null,
-            symbolType: snappedPointResult.symbolType || null,
-          }
+          ...node,
+          x: snapped.x,
+          y: snapped.z,
+          z: snapped.y,
+          pointId: snappedPointResult.pointId || null,
+          symbolType: snappedPointResult.symbolType || null,
+        }
         : node
     );
 
@@ -1437,12 +1437,12 @@ const FloorPlan3D = () => {
     const next = routeNodesRef.current[index + 1];
     const inserted = next
       ? {
-          x: Number(((current.x + next.x) / 2).toFixed(4)),
-          y: Number(((current.y + next.y) / 2).toFixed(4)),
-          z: Number(((current.z + next.z) / 2).toFixed(4)),
-          pointId: null,
-          symbolType: null,
-        }
+        x: Number(((current.x + next.x) / 2).toFixed(4)),
+        y: Number(((current.y + next.y) / 2).toFixed(4)),
+        z: Number(((current.z + next.z) / 2).toFixed(4)),
+        pointId: null,
+        symbolType: null,
+      }
       : { ...current, pointId: null, symbolType: null };
     const nextNodes = [...routeNodesRef.current];
     nextNodes.splice(index + 1, 0, inserted);
@@ -1745,454 +1745,454 @@ const FloorPlan3D = () => {
             </div>
           </div>
           {selectedRoom && (
-          <>
-          <div className="room-geometry-panel">
-            <h3>Геометрия комнаты для 3D</h3>
-            {selectedRoom.area && (
-              <div className="floor-plan-3d-tip">
-                Площадь комнаты: <strong>{Number(selectedRoom.area).toFixed(2)} м²</strong>.
-                При изменении одной стороны в метрах вторая может быть рассчитана из площади.
+            <>
+              <div className="room-geometry-panel">
+                <h3>Геометрия комнаты для 3D</h3>
+                {selectedRoom.area && (
+                  <div className="floor-plan-3d-tip">
+                    Площадь комнаты: <strong>{Number(selectedRoom.area).toFixed(2)} м²</strong>.
+                    При изменении одной стороны в метрах вторая может быть рассчитана из площади.
+                  </div>
+                )}
+                <div className="editor-field">
+                  <label htmlFor="roomWidthM">Ширина, м</label>
+                  <input
+                    id="roomWidthM"
+                    type="number"
+                    min="0.5"
+                    max="50"
+                    step="0.1"
+                    value={roomWidthCm != null ? (roomWidthCm / 100).toFixed(2) : ''}
+                    onChange={(e) => {
+                      const val = Number(e.target.value || 0);
+                      if (!val) {
+                        setRoomWidthCm(null);
+                        return;
+                      }
+                      const cm = val * 100;
+                      setRoomWidthCm(cm);
+                      const areaM2 = Number(selectedRoom.area || 0);
+                      if (areaM2 > 0 && (!roomLengthCm || roomLengthCm <= 0)) {
+                        const otherCm = (areaM2 * 10000) / cm;
+                        setRoomLengthCm(otherCm);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="editor-field">
+                  <label htmlFor="roomLengthM">Длина, м</label>
+                  <input
+                    id="roomLengthM"
+                    type="number"
+                    min="0.5"
+                    max="50"
+                    step="0.1"
+                    value={roomLengthCm != null ? (roomLengthCm / 100).toFixed(2) : ''}
+                    onChange={(e) => {
+                      const val = Number(e.target.value || 0);
+                      if (!val) {
+                        setRoomLengthCm(null);
+                        return;
+                      }
+                      const cm = val * 100;
+                      setRoomLengthCm(cm);
+                      const areaM2 = Number(selectedRoom.area || 0);
+                      if (areaM2 > 0 && (!roomWidthCm || roomWidthCm <= 0)) {
+                        const otherCm = (areaM2 * 10000) / cm;
+                        setRoomWidthCm(otherCm);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="editor-field">
+                  <label htmlFor="roomHeightM">Высота потолка, м</label>
+                  <input
+                    id="roomHeightM"
+                    type="number"
+                    min="2"
+                    max="5"
+                    step="0.1"
+                    value={roomCeilingHeightM.toFixed(2)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value || ROOM_HEIGHT_M);
+                      setRoomCeilingHeightM(val > 0 ? val : ROOM_HEIGHT_M);
+                    }}
+                  />
+                </div>
               </div>
-            )}
-            <div className="editor-field">
-              <label htmlFor="roomWidthM">Ширина, м</label>
-              <input
-                id="roomWidthM"
-                type="number"
-                min="0.5"
-                max="50"
-                step="0.1"
-                value={roomWidthCm != null ? (roomWidthCm / 100).toFixed(2) : ''}
-                onChange={(e) => {
-                  const val = Number(e.target.value || 0);
-                  if (!val) {
-                    setRoomWidthCm(null);
-                    return;
-                  }
-                  const cm = val * 100;
-                  setRoomWidthCm(cm);
-                  const areaM2 = Number(selectedRoom.area || 0);
-                  if (areaM2 > 0 && (!roomLengthCm || roomLengthCm <= 0)) {
-                    const otherCm = (areaM2 * 10000) / cm;
-                    setRoomLengthCm(otherCm);
-                  }
-                }}
-              />
-            </div>
-            <div className="editor-field">
-              <label htmlFor="roomLengthM">Длина, м</label>
-              <input
-                id="roomLengthM"
-                type="number"
-                min="0.5"
-                max="50"
-                step="0.1"
-                value={roomLengthCm != null ? (roomLengthCm / 100).toFixed(2) : ''}
-                onChange={(e) => {
-                  const val = Number(e.target.value || 0);
-                  if (!val) {
-                    setRoomLengthCm(null);
-                    return;
-                  }
-                  const cm = val * 100;
-                  setRoomLengthCm(cm);
-                  const areaM2 = Number(selectedRoom.area || 0);
-                  if (areaM2 > 0 && (!roomWidthCm || roomWidthCm <= 0)) {
-                    const otherCm = (areaM2 * 10000) / cm;
-                    setRoomWidthCm(otherCm);
-                  }
-                }}
-              />
-            </div>
-            <div className="editor-field">
-              <label htmlFor="roomHeightM">Высота потолка, м</label>
-              <input
-                id="roomHeightM"
-                type="number"
-                min="2"
-                max="5"
-                step="0.1"
-                value={roomCeilingHeightM.toFixed(2)}
-                onChange={(e) => {
-                  const val = Number(e.target.value || ROOM_HEIGHT_M);
-                  setRoomCeilingHeightM(val > 0 ? val : ROOM_HEIGHT_M);
-                }}
-              />
-            </div>
-          </div>
-          <div className="room-plan-panel">
-            <h3>Сохранения 3D расчетов</h3>
-            <div className="editor-field">
-              <label htmlFor="saveCalcName">Название сохранения</label>
-              <input
-                id="saveCalcName"
-                type="text"
-                value={saveCalcName}
-                onChange={(e) => setSaveCalcName(e.target.value)}
-                placeholder="Например: Вариант с доп. линией кухни"
-              />
-            </div>
-            <button type="button" className="btn-primary" onClick={saveCurrent3DCalculation}>
-              Сохранить текущий 3D расчет
-            </button>
-            <div className="room-list-scroll" style={{ marginTop: '8px' }}>
-              {saved3DCalculations.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={selectedSavedCalcId === item.id ? 'route-item-btn active' : 'route-item-btn'}
-                  onClick={() => openSaved3DCalculation(item.id)}
-                >
-                  #{item.id} {item.name}
+              <div className="room-plan-panel">
+                <h3>Сохранения 3D расчетов</h3>
+                <div className="editor-field">
+                  <label htmlFor="saveCalcName">Название сохранения</label>
+                  <input
+                    id="saveCalcName"
+                    type="text"
+                    value={saveCalcName}
+                    onChange={(e) => setSaveCalcName(e.target.value)}
+                    placeholder="Например: Вариант с доп. линией кухни"
+                  />
+                </div>
+                <button type="button" className="btn-primary" onClick={saveCurrent3DCalculation}>
+                  Сохранить текущий 3D расчет
                 </button>
-              ))}
-            </div>
-            {selectedSavedCalcDetails && (
-              <div className="floor-plan-3d-tip">
-                <div><strong>{selectedSavedCalcDetails.name}</strong></div>
-                <div>Сохранено: {new Date(selectedSavedCalcDetails.createdAt).toLocaleString('ru-RU')}</div>
-                {selectedSavedCalcDetails.calculation && (
-                  <div>
-                    Мощность: {Number(selectedSavedCalcDetails.calculation.totalPowerConsumption || 0).toFixed(0)} Вт,
-                    кабель: {Number(selectedSavedCalcDetails.calculation.cableLength || 0).toFixed(2)} м
+                <div className="room-list-scroll" style={{ marginTop: '8px' }}>
+                  {saved3DCalculations.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={selectedSavedCalcId === item.id ? 'route-item-btn active' : 'route-item-btn'}
+                      onClick={() => openSaved3DCalculation(item.id)}
+                    >
+                      #{item.id} {item.name}
+                    </button>
+                  ))}
+                </div>
+                {selectedSavedCalcDetails && (
+                  <div className="floor-plan-3d-tip">
+                    <div><strong>{selectedSavedCalcDetails.name}</strong></div>
+                    <div>Сохранено: {new Date(selectedSavedCalcDetails.createdAt).toLocaleString('ru-RU')}</div>
+                    {selectedSavedCalcDetails.calculation && (
+                      <div>
+                        Мощность: {Number(selectedSavedCalcDetails.calculation.totalPowerConsumption || 0).toFixed(0)} Вт,
+                        кабель: {Number(selectedSavedCalcDetails.calculation.cableLength || 0).toFixed(2)} м
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-          {selectedRoom && (
-            <div className="floor-plan-3d-tip">
-              Геометрию и площадь комнаты изменяйте в настройках проекта: /projects/{projectId}/edit.
-            </div>
-          )}
-          <div className="tool-grid">
-            <button className={tool === 'navigate' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('navigate')}>
-              Навигация
-            </button>
-            <button className={tool === 'add-source' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-source')}>
-              Точка старта линии
-            </button>
-            <button className={tool === 'add-outlet' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-outlet')}>
-              Розетка
-            </button>
-            <button className={tool === 'add-switch' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-switch')}>
-              Выключатель
-            </button>
-            <button className={tool === 'add-light' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-light')}>
-              Лампа
-            </button>
-            <button className={tool === 'draw-route' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('draw-route')}>
-              Трасса кабеля
-            </button>
-            <button className={tool === 'add-door' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-door')}>
-              Дверь
-            </button>
-            <button className={tool === 'add-window' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-window')}>
-              Окно
-            </button>
-          </div>
-          <div className="editor-field">
-            <label htmlFor="surfaceMode">Рабочая поверхность</label>
-            <select id="surfaceMode" value={surfaceMode} onChange={(e) => setSurfaceMode(e.target.value)}>
-              <option value="wall">Стены</option>
-              <option value="floor">Пол</option>
-              <option value="ceiling">Потолок</option>
-            </select>
-          </div>
-          {surfaceMode === 'wall' && (
-            <div className="editor-field">
-              <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
-              <select id="wallFaceMode" value={wallFaceMode} onChange={(e) => setWallFaceMode(e.target.value)}>
-                <option value="auto">Авто (ближайшая)</option>
-                <option value="north">Северная</option>
-                <option value="south">Южная</option>
-                <option value="west">Западная</option>
-                <option value="east">Восточная</option>
-              </select>
-            </div>
-          )}
-          <div className="editor-field">
-            <label htmlFor="parallelOffsetCm">Смещение параллельной линии, см</label>
-            <input
-              id="parallelOffsetCm"
-              type="number"
-              min="-30"
-              max="30"
-              value={parallelOffsetCm}
-              onChange={(e) => setParallelOffsetCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="doorWidth">Ширина двери, см</label>
-            <input
-              id="doorWidth"
-              type="number"
-              min="50"
-              max="200"
-              value={doorWidthCm}
-              onChange={(e) => setDoorWidthCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="windowWidth">Ширина окна, см</label>
-            <input
-              id="windowWidth"
-              type="number"
-              min="50"
-              max="300"
-              value={windowWidthCm}
-              onChange={(e) => setWindowWidthCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="pointHeight">Высота точки, см</label>
-            <input
-              id="pointHeight"
-              type="number"
-              min="0"
-              max="400"
-              value={pointHeight}
-              onChange={(e) => setPointHeight(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeName">Название трассы</label>
-            <input
-              id="routeName"
-              type="text"
-              value={newRouteName}
-              onChange={(e) => setNewRouteName(e.target.value)}
-              placeholder="Например: Кухня-розетки-1"
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeHeight">Базовая высота трассы, см</label>
-            <input
-              id="routeHeight"
-              type="number"
-              min="0"
-              max="400"
-              value={routeHeight}
-              onChange={(e) => setRouteHeight(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeMode">Режим прокладки</label>
-            <select
-              id="routeMode"
-              value={routePlacementMode}
-              onChange={(e) => setRoutePlacementMode(e.target.value)}
-            >
-              <option value="wall">По стене</option>
-              <option value="ceiling">По потолку</option>
-              <option value="floor">По полу</option>
-            </select>
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeCircuit">Электрическая цепь</label>
-            <select
-              id="routeCircuit"
-              value={selectedCircuitId}
-              onChange={(e) => setSelectedCircuitId(e.target.value)}
-            >
-              <option value="">Без цепи</option>
-              {circuits.map((circuit) => (
-                <option key={circuit.id} value={circuit.id}>
-                  {circuit.name} ({circuit.breakerRatingA || '?'}A)
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="floor-plan-3d-tip">
-            Логика разводки: 1) поставьте "Точку старта линии" на стене/потолке, 2) проложите трассы от нее, 3) на концах трасс ставьте розетки.
-          </div>
-
-          <div className="route-actions">
-            <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0}>
-              Сохранить трассу
-            </button>
-            <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0}>
-              Обновить выбранную
-            </button>
-            <button type="button" className="btn-secondary" onClick={clearRouteDraft}>
-              Очистить черновик
-            </button>
-            <button type="button" className="btn-secondary" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>
-              Удалить выбранную
-            </button>
-          </div>
-
-          {routeNodesRef.current.length > 0 && (
-            <div className="route-node-editor">
-              <h3>Узлы черновика</h3>
-              <div className="route-node-scroll">
-                {routeNodesRef.current.map((node, idx) => (
-                  <div key={`${idx}-${node.x}-${node.y}-${node.z}`} className="route-node-row">
-                    <span className="route-node-index">#{idx + 1}</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={Number(toCentimeters(node.x).toFixed(1))}
-                      onChange={(e) => updateNodeAtIndex(idx, 'x', toMeters(e.target.value))}
-                      title="X (см)"
-                    />
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={Number(toCentimeters(node.y).toFixed(1))}
-                      onChange={(e) => updateNodeAtIndex(idx, 'y', toMeters(e.target.value))}
-                      title="Y (см)"
-                    />
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={Number(toCentimeters(node.z).toFixed(1))}
-                      onChange={(e) => updateNodeAtIndex(idx, 'z', toMeters(e.target.value))}
-                      title="Z (см)"
-                    />
-                    <button type="button" className="mini-btn" onClick={() => insertNodeAfter(idx)}>+</button>
-                    <button type="button" className="mini-btn" onClick={() => removeNodeAt(idx)} disabled={routeNodesRef.current.length <= 2}>-</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <h2>Статус сцены</h2>
-          <ul>
-            <li>Помещения: {stats.rooms}</li>
-            <li>Стены: {stats.walls}</li>
-            <li>Точки: {stats.points}</li>
-            <li>Трассы: {stats.routes}</li>
-            <li>Узлы трассы: {routePointCount}</li>
-            <li>Длина черновика: {routeDraftLength.toFixed(2)} м</li>
-          </ul>
-          <div className="floor-plan-3d-tip">{readinessText}</div>
-          <div className="floor-plan-3d-tip">
-            <strong>Ступенчатая валидация ТКП:</strong>
-            <div>Шаг 1 (геометрия): {validationStages.stage1Errors.length ? `ошибки: ${validationStages.stage1Errors.join('; ')}` : 'OK'}</div>
-            <div>Шаг 2 (электробезопасность): {validationStages.stage2Errors.length ? `ошибки: ${validationStages.stage2Errors.join('; ')}` : 'OK'}</div>
-            <div>Шаг 3 (уточнение): {validationStages.stage3Warnings.length ? validationStages.stage3Warnings.join('; ') : 'OK'}</div>
-          </div>
-          {selectedRoom && (
-            <div className="floor-plan-3d-tip">
-              <strong>{selectedRoom.name} — текущее состояние:</strong>
-              <div>Точек: {roomExistingStats.points} (розетки {roomExistingStats.outlets}, выключатели {roomExistingStats.switches}, свет {roomExistingStats.lights})</div>
-              <div>Приборов в комнате: {roomExistingStats.appliances}</div>
-              {selectedRoomCalculation && (
-                <div>
-                  Частичный расчет: {selectedRoomCalculation.applianceCount} приборов, {Number(selectedRoomCalculation.totalPower || 0).toFixed(0)} Вт
+              {selectedRoom && (
+                <div className="floor-plan-3d-tip">
+                  Геометрию и площадь комнаты изменяйте в настройках проекта: /projects/{projectId}/edit.
                 </div>
               )}
-            </div>
-          )}
-          {selectedRoom && (
-            <div className="room-plan-panel">
-              <h3>План размещения (что хотим добавить)</h3>
+              <div className="tool-grid">
+                <button className={tool === 'navigate' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('navigate')}>
+                  Навигация
+                </button>
+                <button className={tool === 'add-source' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-source')}>
+                  Точка старта линии
+                </button>
+                <button className={tool === 'add-outlet' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-outlet')}>
+                  Розетка
+                </button>
+                <button className={tool === 'add-switch' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-switch')}>
+                  Выключатель
+                </button>
+                <button className={tool === 'add-light' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-light')}>
+                  Лампа
+                </button>
+                <button className={tool === 'draw-route' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('draw-route')}>
+                  Трасса кабеля
+                </button>
+                <button className={tool === 'add-door' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-door')}>
+                  Дверь
+                </button>
+                <button className={tool === 'add-window' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-window')}>
+                  Окно
+                </button>
+              </div>
               <div className="editor-field">
-                <label>План: розетки, шт</label>
+                <label htmlFor="surfaceMode">Рабочая поверхность</label>
+                <select id="surfaceMode" value={surfaceMode} onChange={(e) => setSurfaceMode(e.target.value)}>
+                  <option value="wall">Стены</option>
+                  <option value="floor">Пол</option>
+                  <option value="ceiling">Потолок</option>
+                </select>
+              </div>
+              {surfaceMode === 'wall' && (
+                <div className="editor-field">
+                  <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
+                  <select id="wallFaceMode" value={wallFaceMode} onChange={(e) => setWallFaceMode(e.target.value)}>
+                    <option value="auto">Авто (ближайшая)</option>
+                    <option value="north">Северная</option>
+                    <option value="south">Южная</option>
+                    <option value="west">Западная</option>
+                    <option value="east">Восточная</option>
+                  </select>
+                </div>
+              )}
+              <div className="editor-field">
+                <label htmlFor="parallelOffsetCm">Смещение параллельной линии, см</label>
                 <input
+                  id="parallelOffsetCm"
                   type="number"
-                  min="0"
-                  value={roomPlan.plannedOutlets}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedOutlets: Number(e.target.value || 0) },
-                  }))}
+                  min="-30"
+                  max="30"
+                  value={parallelOffsetCm}
+                  onChange={(e) => setParallelOffsetCm(Number(e.target.value || 0))}
                 />
               </div>
               <div className="editor-field">
-                <label>План: выключатели, шт</label>
+                <label htmlFor="doorWidth">Ширина двери, см</label>
                 <input
+                  id="doorWidth"
                   type="number"
-                  min="0"
-                  value={roomPlan.plannedSwitches}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedSwitches: Number(e.target.value || 0) },
-                  }))}
+                  min="50"
+                  max="200"
+                  value={doorWidthCm}
+                  onChange={(e) => setDoorWidthCm(Number(e.target.value || 0))}
                 />
               </div>
               <div className="editor-field">
-                <label>План: световые точки, шт</label>
+                <label htmlFor="windowWidth">Ширина окна, см</label>
                 <input
+                  id="windowWidth"
                   type="number"
-                  min="0"
-                  value={roomPlan.plannedLights}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedLights: Number(e.target.value || 0) },
-                  }))}
+                  min="50"
+                  max="300"
+                  value={windowWidthCm}
+                  onChange={(e) => setWindowWidthCm(Number(e.target.value || 0))}
                 />
               </div>
               <div className="editor-field">
-                <label>Резерв кабеля, м</label>
+                <label htmlFor="pointHeight">Высота точки, см</label>
                 <input
+                  id="pointHeight"
                   type="number"
                   min="0"
-                  step="0.1"
-                  value={roomPlan.cableReserveM}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, cableReserveM: Number(e.target.value || 0) },
-                  }))}
+                  max="400"
+                  value={pointHeight}
+                  onChange={(e) => setPointHeight(Number(e.target.value || 0))}
                 />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="routeName">Название трассы</label>
+                <input
+                  id="routeName"
+                  type="text"
+                  value={newRouteName}
+                  onChange={(e) => setNewRouteName(e.target.value)}
+                  placeholder="Например: Кухня-розетки-1"
+                />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="routeHeight">Базовая высота трассы, см</label>
+                <input
+                  id="routeHeight"
+                  type="number"
+                  min="0"
+                  max="400"
+                  value={routeHeight}
+                  onChange={(e) => setRouteHeight(Number(e.target.value || 0))}
+                />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="routeMode">Режим прокладки</label>
+                <select
+                  id="routeMode"
+                  value={routePlacementMode}
+                  onChange={(e) => setRoutePlacementMode(e.target.value)}
+                >
+                  <option value="wall">По стене</option>
+                  <option value="ceiling">По потолку</option>
+                  <option value="floor">По полу</option>
+                </select>
+              </div>
+              <div className="editor-field">
+                <label htmlFor="routeCircuit">Электрическая цепь</label>
+                <select
+                  id="routeCircuit"
+                  value={selectedCircuitId}
+                  onChange={(e) => setSelectedCircuitId(e.target.value)}
+                >
+                  <option value="">Без цепи</option>
+                  {circuits.map((circuit) => (
+                    <option key={circuit.id} value={circuit.id}>
+                      {circuit.name} ({circuit.breakerRatingA || '?'}A)
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="floor-plan-3d-tip">
-                План по комнате: +{roomPlan.plannedOutlets + roomPlan.plannedSwitches + roomPlan.plannedLights} точек,
-                доп. кабель {Number(roomPlan.cableReserveM || 0).toFixed(1)} м.
+                Логика разводки: 1) поставьте "Точку старта линии" на стене/потолке, 2) проложите трассы от нее, 3) на концах трасс ставьте розетки.
               </div>
-            </div>
-          )}
-          {getRouteModeWarning() && (
-            <div className="floor-plan-3d-tip">
-              {getRouteModeWarning()}
-            </div>
-          )}
-          <div className="floor-plan-3d-tip">
-            Если выбрана цепь, конечные точки трассы автоматически привязываются к ней (если у точек еще нет цепи).
-          </div>
-          <div className="floor-plan-3d-tip">
-            Для вертикального сегмента удерживайте Shift при клике. Для плотной прокладки рядом используйте смещение линии.
-          </div>
-          <div className="floor-plan-3d-tip">
-            Горячие клавиши: 1-розетка, 2-выключатель, 3-свет, 4-трасса, W-стены, F-пол, C-потолок.
-          </div>
-          <div className="route-actions">
-            <button type="button" className="btn-secondary" onClick={undoLastAction} disabled={!canUndo}>
-              Undo (Ctrl+Z)
-            </button>
-            <button type="button" className="btn-secondary" onClick={redoLastAction} disabled={!canRedo}>
-              Redo (Ctrl+Y)
-            </button>
-          </div>
-          <div className="existing-routes-list">
-            <h3>Существующие трассы</h3>
-            <ul>
-              {sceneData.routes.map((route) => (
-                <li key={route.id}>
-                  <button
-                    type="button"
-                    className={selectedRouteId === route.id ? 'route-item-btn active' : 'route-item-btn'}
-                    onClick={() => loadRouteToDraft(route.id)}
-                  >
-                    #{route.id} {route.notes || 'Без названия'} ({Number(route.lengthM || 0).toFixed(2)} м)
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-          {routeValidationMessages.length > 0 && (
-            <div className="floor-plan-3d-tip floor-plan-3d-error">
-              <ul className="validation-list">
-                {routeValidationMessages.map((msg) => (
-                  <li key={msg}>{msg}</li>
-                ))}
+
+              <div className="route-actions">
+                <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0}>
+                  Сохранить трассу
+                </button>
+                <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0}>
+                  Обновить выбранную
+                </button>
+                <button type="button" className="btn-secondary" onClick={clearRouteDraft}>
+                  Очистить черновик
+                </button>
+                <button type="button" className="btn-secondary" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>
+                  Удалить выбранную
+                </button>
+              </div>
+
+              {routeNodesRef.current.length > 0 && (
+                <div className="route-node-editor">
+                  <h3>Узлы черновика</h3>
+                  <div className="route-node-scroll">
+                    {routeNodesRef.current.map((node, idx) => (
+                      <div key={`${idx}-${node.x}-${node.y}-${node.z}`} className="route-node-row">
+                        <span className="route-node-index">#{idx + 1}</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={Number(toCentimeters(node.x).toFixed(1))}
+                          onChange={(e) => updateNodeAtIndex(idx, 'x', toMeters(e.target.value))}
+                          title="X (см)"
+                        />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={Number(toCentimeters(node.y).toFixed(1))}
+                          onChange={(e) => updateNodeAtIndex(idx, 'y', toMeters(e.target.value))}
+                          title="Y (см)"
+                        />
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={Number(toCentimeters(node.z).toFixed(1))}
+                          onChange={(e) => updateNodeAtIndex(idx, 'z', toMeters(e.target.value))}
+                          title="Z (см)"
+                        />
+                        <button type="button" className="mini-btn" onClick={() => insertNodeAfter(idx)}>+</button>
+                        <button type="button" className="mini-btn" onClick={() => removeNodeAt(idx)} disabled={routeNodesRef.current.length <= 2}>-</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <h2>Статус сцены</h2>
+              <ul>
+                <li>Помещения: {stats.rooms}</li>
+                <li>Стены: {stats.walls}</li>
+                <li>Точки: {stats.points}</li>
+                <li>Трассы: {stats.routes}</li>
+                <li>Узлы трассы: {routePointCount}</li>
+                <li>Длина черновика: {routeDraftLength.toFixed(2)} м</li>
               </ul>
-            </div>
-          )}
-          {error && <div className="floor-plan-3d-tip floor-plan-3d-error">{error}</div>}
-          </>
+              <div className="floor-plan-3d-tip">{readinessText}</div>
+              <div className="floor-plan-3d-tip">
+                <strong>Ступенчатая валидация ТКП:</strong>
+                <div>Шаг 1 (геометрия): {validationStages.stage1Errors.length ? `ошибки: ${validationStages.stage1Errors.join('; ')}` : 'OK'}</div>
+                <div>Шаг 2 (электробезопасность): {validationStages.stage2Errors.length ? `ошибки: ${validationStages.stage2Errors.join('; ')}` : 'OK'}</div>
+                <div>Шаг 3 (уточнение): {validationStages.stage3Warnings.length ? validationStages.stage3Warnings.join('; ') : 'OK'}</div>
+              </div>
+              {selectedRoom && (
+                <div className="floor-plan-3d-tip">
+                  <strong>{selectedRoom.name} — текущее состояние:</strong>
+                  <div>Точек: {roomExistingStats.points} (розетки {roomExistingStats.outlets}, выключатели {roomExistingStats.switches}, свет {roomExistingStats.lights})</div>
+                  <div>Приборов в комнате: {roomExistingStats.appliances}</div>
+                  {selectedRoomCalculation && (
+                    <div>
+                      Частичный расчет: {selectedRoomCalculation.applianceCount} приборов, {Number(selectedRoomCalculation.totalPower || 0).toFixed(0)} Вт
+                    </div>
+                  )}
+                </div>
+              )}
+              {selectedRoom && (
+                <div className="room-plan-panel">
+                  <h3>План размещения (что хотим добавить)</h3>
+                  <div className="editor-field">
+                    <label>План: розетки, шт</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={roomPlan.plannedOutlets}
+                      onChange={(e) => setRoomPlanData((prev) => ({
+                        ...prev,
+                        [selectedRoomId]: { ...roomPlan, plannedOutlets: Number(e.target.value || 0) },
+                      }))}
+                    />
+                  </div>
+                  <div className="editor-field">
+                    <label>План: выключатели, шт</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={roomPlan.plannedSwitches}
+                      onChange={(e) => setRoomPlanData((prev) => ({
+                        ...prev,
+                        [selectedRoomId]: { ...roomPlan, plannedSwitches: Number(e.target.value || 0) },
+                      }))}
+                    />
+                  </div>
+                  <div className="editor-field">
+                    <label>План: световые точки, шт</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={roomPlan.plannedLights}
+                      onChange={(e) => setRoomPlanData((prev) => ({
+                        ...prev,
+                        [selectedRoomId]: { ...roomPlan, plannedLights: Number(e.target.value || 0) },
+                      }))}
+                    />
+                  </div>
+                  <div className="editor-field">
+                    <label>Резерв кабеля, м</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={roomPlan.cableReserveM}
+                      onChange={(e) => setRoomPlanData((prev) => ({
+                        ...prev,
+                        [selectedRoomId]: { ...roomPlan, cableReserveM: Number(e.target.value || 0) },
+                      }))}
+                    />
+                  </div>
+                  <div className="floor-plan-3d-tip">
+                    План по комнате: +{roomPlan.plannedOutlets + roomPlan.plannedSwitches + roomPlan.plannedLights} точек,
+                    доп. кабель {Number(roomPlan.cableReserveM || 0).toFixed(1)} м.
+                  </div>
+                </div>
+              )}
+              {getRouteModeWarning() && (
+                <div className="floor-plan-3d-tip">
+                  {getRouteModeWarning()}
+                </div>
+              )}
+              <div className="floor-plan-3d-tip">
+                Если выбрана цепь, конечные точки трассы автоматически привязываются к ней (если у точек еще нет цепи).
+              </div>
+              <div className="floor-plan-3d-tip">
+                Для вертикального сегмента удерживайте Shift при клике. Для плотной прокладки рядом используйте смещение линии.
+              </div>
+              <div className="floor-plan-3d-tip">
+                Горячие клавиши: 1-розетка, 2-выключатель, 3-свет, 4-трасса, W-стены, F-пол, C-потолок.
+              </div>
+              <div className="route-actions">
+                <button type="button" className="btn-secondary" onClick={undoLastAction} disabled={!canUndo}>
+                  Undo (Ctrl+Z)
+                </button>
+                <button type="button" className="btn-secondary" onClick={redoLastAction} disabled={!canRedo}>
+                  Redo (Ctrl+Y)
+                </button>
+              </div>
+              <div className="existing-routes-list">
+                <h3>Существующие трассы</h3>
+                <ul>
+                  {sceneData.routes.map((route) => (
+                    <li key={route.id}>
+                      <button
+                        type="button"
+                        className={selectedRouteId === route.id ? 'route-item-btn active' : 'route-item-btn'}
+                        onClick={() => loadRouteToDraft(route.id)}
+                      >
+                        #{route.id} {route.notes || 'Без названия'} ({Number(route.lengthM || 0).toFixed(2)} м)
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {routeValidationMessages.length > 0 && (
+                <div className="floor-plan-3d-tip floor-plan-3d-error">
+                  <ul className="validation-list">
+                    {routeValidationMessages.map((msg) => (
+                      <li key={msg}>{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {error && <div className="floor-plan-3d-tip floor-plan-3d-error">{error}</div>}
+            </>
           )}
         </aside>
 
