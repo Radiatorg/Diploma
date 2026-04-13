@@ -139,18 +139,18 @@ const StepByStepCalculator = () => {
           const roomUniqueId = loadedRooms[index].id;
           
           // Преобразуем socketGroupsConfig из JSON или используем старые поля
-          let socketGroupsConfig = [{ socketsCount: 2 }];
+          let socketGroupsConfig = [{ socketsCount: 1 }];
           if (room.socketGroupsConfig) {
             try {
               socketGroupsConfig = JSON.parse(room.socketGroupsConfig);
             } catch (e) {
               if (room.socketGroups && room.socketGroups > 0) {
-                const socketsPerGroup = room.socketsPerGroup || 2;
+                const socketsPerGroup = room.socketsPerGroup || 1;
                 socketGroupsConfig = Array(room.socketGroups).fill(null).map(() => ({ socketsCount: socketsPerGroup }));
               }
             }
           } else if (room.socketGroups && room.socketGroups > 0) {
-            const socketsPerGroup = room.socketsPerGroup || 2;
+            const socketsPerGroup = room.socketsPerGroup || 1;
             socketGroupsConfig = Array(room.socketGroups).fill(null).map(() => ({ socketsCount: socketsPerGroup }));
           }
           
@@ -332,7 +332,7 @@ const StepByStepCalculator = () => {
       
       initialConfig[room.id] = {
         appliances: [], // Массив объектов {id, quantity}
-        socketGroupsConfig: [{ socketsCount: 2 }], // По умолчанию 1 группа с 2 розетками
+        socketGroupsConfig: [{ socketsCount: 1 }], // По умолчанию 1 группа с 1 розеткой
         windowCount: 0, // По умолчанию 0 окон
         roomTypeId: room.roomTypeId // Сохраняем roomTypeId для удобства
       };
@@ -573,7 +573,7 @@ const StepByStepCalculator = () => {
           }
         }
         
-        const roomConfig = roomsConfig[selectedRoom.id] || { windowCount: 0, socketGroupsConfig: [{ socketsCount: 2 }] };
+        const roomConfig = roomsConfig[selectedRoom.id] || { windowCount: 0, socketGroupsConfig: [{ socketsCount: 1 }] };
         
         // Подсчитываем номер комнаты этого типа для имени
         const sameTypeCount = selectedRooms.filter(r => r.roomTypeId === selectedRoom.roomTypeId).length;
@@ -589,7 +589,7 @@ const StepByStepCalculator = () => {
           area: (Math.floor(roomArea * 100) / 100).toFixed(2), // Округляем до 2 знаков после запятой вниз
           description: existingRoom?.description || '', // Сохраняем существующее описание, если комната уже есть
           windowCount: roomConfig.windowCount ?? 0,
-          socketGroupsConfig: JSON.stringify(roomConfig.socketGroupsConfig || [{ socketsCount: 2 }])
+          socketGroupsConfig: JSON.stringify(roomConfig.socketGroupsConfig || [{ socketsCount: 1 }])
         };
         
         let room;
@@ -1063,7 +1063,7 @@ const StepByStepCalculator = () => {
               const roomType = roomTypes.find(rt => rt.id === room.roomTypeId);
               if (!roomType) return null;
               
-              const roomConfig = roomsConfig[room.id] || { appliances: [], socketGroupsConfig: [{ socketsCount: 2 }] };
+              const roomConfig = roomsConfig[room.id] || { appliances: [], socketGroupsConfig: [{ socketsCount: 1 }] };
               const roomAppliances = appliances.filter(a => 
                 roomConfig.appliances?.some(app => app.id === a.id)
               );
@@ -1109,14 +1109,14 @@ const StepByStepCalculator = () => {
                   <div className="form-group">
                     <label>Розеточные группы</label>
                     <div className="socket-groups-config">
-                      {(roomConfig.socketGroupsConfig || [{ socketsCount: 2 }]).map((group, index) => (
+                      {(roomConfig.socketGroupsConfig || [{ socketsCount: 1 }]).map((group, index) => (
                         <div key={index} className="socket-group-item">
                           <label>
                             Группа {index + 1}: Количество розеток
                             <select
                               value={group.socketsCount}
                               onChange={(e) => {
-                                const newGroups = [...(roomConfig.socketGroupsConfig || [{ socketsCount: 2 }])];
+                                const newGroups = [...(roomConfig.socketGroupsConfig || [{ socketsCount: 1 }])];
                                 newGroups[index] = { socketsCount: parseInt(e.target.value) };
                                 setRoomsConfig(prev => ({
                                   ...prev,
@@ -1127,6 +1127,7 @@ const StepByStepCalculator = () => {
                                 }));
                               }}
                             >
+                              <option value="1">1 розетка</option>
                               <option value="2">2 розетки</option>
                               <option value="3">3 розетки</option>
                               <option value="4">4 розетки</option>
@@ -1142,7 +1143,7 @@ const StepByStepCalculator = () => {
                                   ...prev,
                                   [room.id]: {
                                     ...(prev[room.id] || { appliances: [] }),
-                                    socketGroupsConfig: newGroups.length > 0 ? newGroups : [{ socketsCount: 2 }]
+                                    socketGroupsConfig: newGroups.length > 0 ? newGroups : [{ socketsCount: 1 }]
                                   }
                                 }));
                               }}
@@ -1160,7 +1161,7 @@ const StepByStepCalculator = () => {
                             ...prev,
                             [room.id]: {
                               ...(prev[room.id] || { appliances: [] }),
-                              socketGroupsConfig: [...(prev[room.id]?.socketGroupsConfig || [{ socketsCount: 2 }]), { socketsCount: 2 }]
+                              socketGroupsConfig: [...(prev[room.id]?.socketGroupsConfig || [{ socketsCount: 1 }]), { socketsCount: 1 }]
                             }
                           }));
                         }}
@@ -1170,7 +1171,7 @@ const StepByStepCalculator = () => {
                       </button>
                     </div>
                     <div className="field-hint">
-                      В комнате может быть несколько розеточных групп. В каждой группе может быть от 2 до 4 розеток.
+                      В комнате может быть несколько розеточных групп. В каждой группе может быть от 1 до 4 розеток.
                     </div>
                     {requiresRCD(roomType.name) && (
                       <div className="rcd-requirement">

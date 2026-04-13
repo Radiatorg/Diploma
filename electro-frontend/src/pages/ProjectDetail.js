@@ -251,14 +251,14 @@ const ProjectDetail = () => {
       setRoomEditData(prev => ({
         ...prev,
         socketGroups: prev.socketGroups.map((group, i) => 
-          i === index ? { socketsCount: parseInt(socketsCount) || 2 } : group
+          i === index ? { socketsCount: parseInt(socketsCount) || 1 } : group
         )
       }));
     } else {
       setRoomPropertiesModal(prev => ({
         ...prev,
         socketGroups: prev.socketGroups.map((group, i) => 
-          i === index ? { socketsCount: parseInt(socketsCount) || 2 } : group
+          i === index ? { socketsCount: parseInt(socketsCount) || 1 } : group
         )
       }));
     }
@@ -858,7 +858,7 @@ const ProjectDetail = () => {
                 </button>
               </div>
               <p className="field-hint">
-                В комнате может быть несколько розеточных групп. В каждой группе может быть от 2 до 4 розеток.
+                В комнате может быть несколько розеточных групп. В каждой группе может быть от 1 до 4 розеток.
               </p>
               <div className="socket-groups-list">
                 {(roomPropertiesModal.isEditing ? roomEditData.socketGroups : roomPropertiesModal.socketGroups).map((group, index) => (
@@ -882,6 +882,7 @@ const ProjectDetail = () => {
                         value={group.socketsCount}
                         onChange={(e) => handleUpdateSocketGroup(index, e.target.value)}
                       >
+                        <option value="1">1 розетка</option>
                         <option value="2">2 розетки</option>
                         <option value="3">3 розетки</option>
                         <option value="4">4 розетки</option>

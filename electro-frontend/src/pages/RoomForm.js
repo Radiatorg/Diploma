@@ -13,7 +13,7 @@ const RoomForm = () => {
     description: '',
     windowCount: 0,
     socketGroups: 1,
-    socketsPerGroup: 2,
+    socketsPerGroup: 1,
   });
   const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,7 @@ const RoomForm = () => {
         description: response.data.description || '',
         windowCount: response.data.windowCount || 0,
         socketGroups: response.data.socketGroups || 1,
-        socketsPerGroup: response.data.socketsPerGroup || 2,
+        socketsPerGroup: response.data.socketsPerGroup || 1,
       });
     } catch (err) {
       setError('Ошибка загрузки комнаты');
@@ -70,7 +70,7 @@ const RoomForm = () => {
       area: Number(formData.area),
       windowCount: Number(formData.windowCount) || 0,
       socketGroups: Number(formData.socketGroups) || 1,
-      socketsPerGroup: Number(formData.socketsPerGroup) || 2,
+      socketsPerGroup: Number(formData.socketsPerGroup) || 1,
     };
 
     try {
@@ -175,12 +175,13 @@ const RoomForm = () => {
             onChange={handleChange}
             required
           >
+            <option value="1">1 розетка</option>
             <option value="2">2 розетки</option>
             <option value="3">3 розетки</option>
             <option value="4">4 розетки</option>
           </select>
           <div className="field-hint">
-            В одном блоке может быть от 2 до 4 электрических точек
+            В одном блоке может быть от 1 до 4 электрических точек
           </div>
         </div>
         <div className="form-actions">
