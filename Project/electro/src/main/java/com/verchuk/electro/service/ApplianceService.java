@@ -97,6 +97,11 @@ public class ApplianceService {
 
     @Transactional
     public ApplianceResponse createAppliance(ApplianceRequest request) {
+        String normalizedModel = trimToNull(request.getModel());
+        if (normalizedModel != null && applianceRepository.existsByModelIgnoreCase(normalizedModel)) {
+            throw new BadRequestException("Прибор с такой моделью уже существует");
+        }
+
         Appliance appliance = Appliance.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -108,7 +113,7 @@ public class ApplianceService {
                 .width(request.getWidth())
                 .height(request.getHeight())
                 .price(request.getPrice())
-                .model(request.getModel())
+                .model(normalizedModel)
                 .ipRating(request.getIpRating())
                 .color(request.getColor())
                 .cableBrand(request.getCableBrand())
@@ -175,6 +180,14 @@ public class ApplianceService {
                 .orElseGet(() -> applianceRepository.findById(id)
                         .orElseThrow(() -> new ResourceNotFoundException("Appliance", "id", id)));
 
+        String normalizedModel = trimToNull(request.getModel());
+        String currentModel = trimToNull(appliance.getModel());
+        boolean modelChanged = !equalsIgnoreCaseNullable(normalizedModel, currentModel);
+        if (modelChanged && normalizedModel != null
+                && applianceRepository.existsByModelIgnoreCaseAndIdNot(normalizedModel, id)) {
+            throw new BadRequestException("Нельзя установить модель: такая модель уже используется другим прибором");
+        }
+
         appliance.setName(request.getName());
         appliance.setDescription(request.getDescription());
         appliance.setPowerConsumption(request.getPowerConsumption());
@@ -187,7 +200,7 @@ public class ApplianceService {
         appliance.setWidth(request.getWidth());
         appliance.setHeight(request.getHeight());
         appliance.setPrice(request.getPrice());
-        appliance.setModel(request.getModel());
+        appliance.setModel(normalizedModel);
         appliance.setIpRating(request.getIpRating());
         appliance.setColor(request.getColor());
         appliance.setCableBrand(request.getCableBrand());
@@ -360,6 +373,24 @@ public class ApplianceService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private static boolean equalsIgnoreCaseNullable(String a, String b) {
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        return a.equalsIgnoreCase(b);
     }
 }
 

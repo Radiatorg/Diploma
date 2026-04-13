@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ApplianceRepository extends JpaRepository<Appliance, Long> {
@@ -22,5 +23,11 @@ public interface ApplianceRepository extends JpaRepository<Appliance, Long> {
     
     @Query("SELECT DISTINCT a FROM Appliance a LEFT JOIN FETCH a.categories LEFT JOIN FETCH a.manufacturer WHERE a.id = :id")
     java.util.Optional<Appliance> findByIdWithCategories(Long id);
+
+    Optional<Appliance> findByModelIgnoreCase(String model);
+
+    boolean existsByModelIgnoreCase(String model);
+
+    boolean existsByModelIgnoreCaseAndIdNot(String model, Long id);
 }
 

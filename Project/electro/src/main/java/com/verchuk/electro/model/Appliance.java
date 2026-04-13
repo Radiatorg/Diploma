@@ -57,7 +57,7 @@ public class Appliance {
     @Column(name = "price", precision = 10, scale = 2)
     private BigDecimal price;
 
-    @Column(name = "model", length = 100)
+    @Column(name = "model", length = 100, unique = true)
     private String model; // модель оборудования
 
     @Column(name = "ip_rating", length = 10)

@@ -105,7 +105,6 @@ public class ExcelDataExchangeService {
         }
     }
 
-    @Transactional
     public ExcelImportResultResponse importAppliancesExcel(MultipartFile file) {
         List<ExcelImportError> errors = new ArrayList<>();
         int created = 0;
@@ -168,6 +167,18 @@ public class ExcelDataExchangeService {
                     req.setHeight(parseBigDecimalOpt(getCell(row, col, "height")));
                     req.setImageUrl(trimOrNull(getCell(row, col, "imageUrl")));
 
+                    if ((id == null || id <= 0) && req.getModel() != null
+                            && applianceRepository.existsByModelIgnoreCase(req.getModel())) {
+                        errors.add(ExcelImportError.builder()
+                                .rowNumber(rowNum)
+                                .message("Строка уже существует: модель \"" + req.getModel() + "\" уже используется")
+                                .build());
+                        skipped++;
+                        continue;
+                    }
+
+                    Long targetId = resolveTargetApplianceId(id, req.getModel());
+
                     String activeStr = getCell(row, col, "active");
                     boolean active = activeStr == null || activeStr.isEmpty() || parseBoolean(activeStr, true);
 
@@ -189,27 +200,33 @@ public class ExcelDataExchangeService {
                     Long mId = parseLong(getCell(row, col, "manufacturerId"));
                     String mName = trimOrNull(getCell(row, col, "manufacturerName"));
                     if (mId != null && mId > 0) {
-                        if (!manufacturerRepository.existsById(mId)) {
+                        if (manufacturerRepository.existsById(mId)) {
+                            req.setManufacturerId(mId);
+                        } else if (mName != null) {
+                            Manufacturer mf = manufacturerRepository.findByNameIgnoreCase(mName)
+                                    .orElseThrow(() -> new IllegalArgumentException("Производитель с именем \"" + mName + "\" не найден"));
+                            req.setManufacturerId(mf.getId());
+                        } else if (targetId != null) {
+                            Appliance existing = applianceRepository.findById(targetId).orElseThrow();
+                            req.setManufacturerId(existing.getManufacturer() != null ? existing.getManufacturer().getId() : null);
+                        } else {
                             throw new IllegalArgumentException("manufacturerId=" + mId + " не найден");
                         }
-                        req.setManufacturerId(mId);
                     } else if (mName != null) {
                         Manufacturer mf = manufacturerRepository.findByNameIgnoreCase(mName)
-                                .orElseThrow(() -> new ResourceNotFoundException("Manufacturer", "name", mName));
+                                .orElseThrow(() -> new IllegalArgumentException("Производитель с именем \"" + mName + "\" не найден"));
                         req.setManufacturerId(mf.getId());
+                    } else if (targetId != null) {
+                        Appliance existing = applianceRepository.findById(targetId).orElseThrow();
+                        req.setManufacturerId(existing.getManufacturer() != null ? existing.getManufacturer().getId() : null);
                     } else {
                         req.setManufacturerId(null);
                     }
 
-                    if (id != null && id > 0) {
-                        if (!applianceRepository.existsById(id)) {
-                            errors.add(ExcelImportError.builder().rowNumber(rowNum).message("Прибор id=" + id + " не найден").build());
-                            skipped++;
-                            continue;
-                        }
-                        applianceService.updateAppliance(id, req);
+                    if (targetId != null) {
+                        applianceService.updateAppliance(targetId, req);
                         if (!active) {
-                            Appliance a = applianceRepository.findById(id).orElseThrow();
+                            Appliance a = applianceRepository.findById(targetId).orElseThrow();
                             a.setActive(false);
                             applianceRepository.save(a);
                         }
@@ -224,7 +241,7 @@ public class ExcelDataExchangeService {
                         created++;
                     }
                 } catch (Exception ex) {
-                    errors.add(ExcelImportError.builder().rowNumber(rowNum).message(ex.getMessage() != null ? ex.getMessage() : ex.toString()).build());
+                    errors.add(ExcelImportError.builder().rowNumber(rowNum).message(localizeImportErrorMessage(ex)).build());
                     skipped++;
                 }
             }
@@ -277,7 +294,6 @@ public class ExcelDataExchangeService {
         }
     }
 
-    @Transactional
     public ExcelImportResultResponse importManufacturersExcel(MultipartFile file) {
         List<ExcelImportError> errors = new ArrayList<>();
         int created = 0;
@@ -349,7 +365,7 @@ public class ExcelDataExchangeService {
                         created++;
                     }
                 } catch (Exception ex) {
-                    errors.add(ExcelImportError.builder().rowNumber(rowNum).message(ex.getMessage() != null ? ex.getMessage() : ex.toString()).build());
+                    errors.add(ExcelImportError.builder().rowNumber(rowNum).message(localizeImportErrorMessage(ex)).build());
                     skipped++;
                 }
             }
@@ -481,5 +497,41 @@ public class ExcelDataExchangeService {
         }
         String v = s.trim().toLowerCase(Locale.ROOT);
         return v.equals("true") || v.equals("1") || v.equals("да") || v.equals("yes");
+    }
+
+    private Long resolveTargetApplianceId(Long id, String model) {
+        if (id != null && id > 0) {
+            if (applianceRepository.existsById(id)) {
+                return id;
+            }
+            if (model != null && !model.isBlank()) {
+                return applianceRepository.findByModelIgnoreCase(model)
+                        .map(Appliance::getId)
+                        .orElse(null);
+            }
+            return null;
+        }
+        return null;
+    }
+
+    private static String localizeImportErrorMessage(Exception ex) {
+        String msg = ex.getMessage();
+        if (msg == null || msg.isBlank()) {
+            return "Внутренняя ошибка при обработке строки";
+        }
+
+        if (msg.contains("Manufacturer") && msg.toLowerCase(Locale.ROOT).contains("not found")) {
+            return "Производитель не найден";
+        }
+        if (msg.contains("Appliance") && msg.toLowerCase(Locale.ROOT).contains("not found")) {
+            return "Прибор не найден";
+        }
+        if (msg.contains("could not execute statement")
+                || msg.contains("constraint")
+                || msg.toLowerCase(Locale.ROOT).contains("duplicate")) {
+            return "Нарушение ограничения уникальности данных";
+        }
+
+        return msg;
     }
 }
