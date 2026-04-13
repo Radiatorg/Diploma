@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { adminAPI } from '../../api/api';
 import AdminNavPanel from '../../components/AdminNavPanel/AdminNavPanel';
+import Pagination from '../../components/UI/Pagination';
 import './Admin.css';
 
 const AdminProjects = () => {
@@ -13,74 +14,87 @@ const AdminProjects = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [sortBy, setSortBy] = useState('id');
+  const [sortDir, setSortDir] = useState('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  useEffect(() => {
-    loadProjects();
-    loadUsers();
-  }, []);
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
+    if (isFirstLoad) {
+      setLoading(true);
+    }
     try {
-      const response = await adminAPI.getAllProjects();
+      const response = await adminAPI.getAllProjects({
+        search: searchQuery.trim() || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        designerId: selectedUserId ? Number(selectedUserId) : undefined,
+        sortBy,
+        sortDir,
+        page: currentPage - 1,
+        size: itemsPerPage
+      });
       setProjects(response.data);
+      const totalCountHeader = response.headers?.['x-total-count'];
+      setTotalItems(totalCountHeader ? Number(totalCountHeader) : response.data.length);
+      setError('');
     } catch (err) {
       setError('Ошибка загрузки расчётов');
     } finally {
-      setLoading(false);
+      if (isFirstLoad) {
+        setLoading(false);
+        setIsFirstLoad(false);
+      }
     }
-  };
+  }, [searchQuery, dateFrom, dateTo, selectedUserId, sortBy, sortDir, currentPage, itemsPerPage, isFirstLoad]);
 
   const loadUsers = async () => {
     try {
-      const response = await adminAPI.getAllUsers();
+      const response = await adminAPI.getAllUsers({
+        sortBy: 'username',
+        sortDir: 'asc',
+        page: 0,
+        size: 1000
+      });
       setUsers(response.data || []);
     } catch (err) {
       console.error('Ошибка загрузки пользователей:', err);
     }
   };
 
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
 
-  const filteredProjects = projects.filter(project => {
-    // Фильтр по поиску
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      const createdAt = project.createdAt ? new Date(project.createdAt).toLocaleDateString('ru-RU') : '';
-      const matchesSearch = 
-        project.name?.toLowerCase().includes(query) ||
-        project.description?.toLowerCase().includes(query) ||
-        project.designerUsername?.toLowerCase().includes(query) ||
-        project.designer?.username?.toLowerCase().includes(query) ||
-        project.id?.toString().includes(query) ||
-        createdAt.includes(query);
-      if (!matchesSearch) return false;
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, dateFrom, dateTo, selectedUserId, sortBy, sortDir]);
+
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
     }
+    setSortBy(field);
+    setSortDir('asc');
+  };
 
-    // Фильтр по дате
-    if (dateFrom || dateTo) {
-      const projectDate = project.createdAt ? new Date(project.createdAt) : null;
-      if (!projectDate) return false;
-      if (dateFrom && projectDate < new Date(dateFrom)) return false;
-      if (dateTo) {
-        const toDate = new Date(dateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (projectDate > toDate) return false;
-      }
-    }
-
-    // Фильтр по пользователю
-    if (selectedUserId) {
-      const projectDesignerId = project.designerId || project.designer?.id;
-      if (projectDesignerId !== parseInt(selectedUserId)) return false;
-    }
-
-    return true;
-  });
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
 
   if (loading) return <div className="loading-container">Загрузка...</div>;
   if (error) return <div className="error-message">{error}</div>;
 
   return (
-    <div className="admin-page fade-in">
+    <div className="admin-page">
       <AdminNavPanel />
       <div className="page-header">
         <h1>Все расчёты</h1>
@@ -94,34 +108,28 @@ const AdminProjects = () => {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="admin-search-input admin-projects-search-input"
         />
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>Дата создания:</label>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Дата создания:</label>
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            style={{ padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+            className="admin-search-input appliances-filter-select"
           />
-          <span>-</span>
+          <span className="appliances-filter-separator">-</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            style={{ padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+            className="admin-search-input appliances-filter-select"
           />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>Пользователь:</label>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Пользователь:</label>
           <select
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            style={{
-              padding: '0.5rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              minWidth: '200px',
-              fontSize: '0.9rem',
-            }}
+            className="admin-search-input appliances-filter-select"
           >
             <option value="">Все пользователи</option>
             {users.map((user) => (
@@ -134,8 +142,32 @@ const AdminProjects = () => {
             ))}
           </select>
         </div>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Сортировка:</label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="admin-search-input appliances-filter-select"
+          >
+            <option value="id">ID</option>
+            <option value="name">Название</option>
+            <option value="designerUsername">Автор</option>
+            <option value="description">Описание</option>
+            <option value="roomsCount">Комнат</option>
+            <option value="appliancesCount">Приборов</option>
+            <option value="createdAt">Дата создания</option>
+          </select>
+          <select
+            value={sortDir}
+            onChange={(e) => setSortDir(e.target.value)}
+            className="admin-search-input appliances-filter-select"
+          >
+            <option value="asc">По возрастанию</option>
+            <option value="desc">По убыванию</option>
+          </select>
+        </div>
       </div>
-      {filteredProjects.length === 0 ? (
+      {projects.length === 0 ? (
         <div className="empty-state">
           <p>{searchQuery ? 'Расчёты не найдены' : 'Нет расчётов в системе'}</p>
         </div>
@@ -144,18 +176,18 @@ const AdminProjects = () => {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Название расчёта</th>
-                <th>Автор</th>
-                <th>Описание</th>
-                <th>Комнат</th>
-                <th>Приборов</th>
-                <th>Дата создания</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID{getSortIndicator('id')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>Название расчёта{getSortIndicator('name')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('designerUsername')}>Автор{getSortIndicator('designerUsername')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('description')}>Описание{getSortIndicator('description')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('roomsCount')}>Комнат{getSortIndicator('roomsCount')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('appliancesCount')}>Приборов{getSortIndicator('appliancesCount')}</th>
+                <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('createdAt')}>Дата создания{getSortIndicator('createdAt')}</th>
                 <th>Действия</th>
               </tr>
             </thead>
             <tbody>
-              {filteredProjects.map((project) => (
+              {projects.map((project) => (
                 <tr key={project.id}>
                   <td>{project.id}</td>
                   <td><strong>{project.name}</strong></td>
@@ -178,6 +210,15 @@ const AdminProjects = () => {
             </tbody>
           </table>
         </div>
+      )}
+      {totalItems > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(totalItems / itemsPerPage)}
+          onPageChange={setCurrentPage}
+          itemsPerPage={itemsPerPage}
+          totalItems={totalItems}
+        />
       )}
     </div>
   );

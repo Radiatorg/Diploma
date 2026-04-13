@@ -17,8 +17,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -164,10 +166,126 @@ public class UserService {
     }
 
     // Admin methods
-    public List<UserResponse> getAllUsers() {
-        return userRepository.findAll().stream()
+    public UserQueryResult getAllUsers(Optional<String> role,
+                                       Optional<String> search,
+                                       Optional<String> sortBy,
+                                       Optional<String> sortDir,
+                                       Optional<Integer> page,
+                                       Optional<Integer> size) {
+        Comparator<User> comparator = buildComparator(sortBy.orElse("id"));
+        if ("desc".equalsIgnoreCase(sortDir.orElse("asc"))) {
+            comparator = comparator.reversed();
+        }
+
+        List<User> filteredAndSortedUsers = userRepository.findAll().stream()
+                .filter(user -> role
+                        .map(r -> user.getRoles().stream()
+                                .anyMatch(userRole -> userRole.getName().name().equalsIgnoreCase(r)))
+                        .orElse(true))
+                .filter(user -> search.map(q -> matchesSearch(user, q)).orElse(true))
+                .sorted(comparator)
+                .collect(Collectors.toList());
+
+        long totalItems = filteredAndSortedUsers.size();
+        List<User> paginatedUsers = paginateUsers(filteredAndSortedUsers, page, size);
+
+        List<UserResponse> resultUsers = paginatedUsers.stream()
                 .map(UserResponse::fromUser)
                 .collect(Collectors.toList());
+
+        return new UserQueryResult(resultUsers, totalItems);
+    }
+
+    private Comparator<User> buildComparator(String sortBy) {
+        return switch (sortBy) {
+            case "username" -> Comparator.comparing(User::getUsername, nullSafeStringComparator());
+            case "email" -> Comparator.comparing(User::getEmail, nullSafeStringComparator());
+            case "firstName" -> Comparator.comparing(User::getFirstName, nullSafeStringComparator());
+            case "lastName" -> Comparator.comparing(User::getLastName, nullSafeStringComparator());
+            case "phoneNumber" -> Comparator.comparing(User::getPhoneNumber, nullSafeStringComparator());
+            case "birthDate" -> Comparator.comparing(User::getBirthDate, nullSafeComparableComparator());
+            case "createdAt" -> Comparator.comparing(User::getCreatedAt, nullSafeComparableComparator());
+            case "updatedAt" -> Comparator.comparing(User::getUpdatedAt, nullSafeComparableComparator());
+            case "enabled" -> Comparator.comparing(User::getEnabled, nullSafeComparableComparator());
+            case "roles" -> Comparator.comparing(this::rolesAsSortedString, nullSafeStringComparator());
+            case "id" -> Comparator.comparing(User::getId, nullSafeComparableComparator());
+            default -> Comparator.comparing(User::getId, nullSafeComparableComparator());
+        };
+    }
+
+    private String rolesAsSortedString(User user) {
+        if (user.getRoles() == null || user.getRoles().isEmpty()) {
+            return null;
+        }
+        return user.getRoles().stream()
+                .map(role -> role.getName().name())
+                .sorted()
+                .collect(Collectors.joining(","));
+    }
+
+    private Comparator<String> nullSafeStringComparator() {
+        return Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private <T extends Comparable<? super T>> Comparator<T> nullSafeComparableComparator() {
+        return Comparator.nullsLast(Comparator.naturalOrder());
+    }
+
+    private boolean matchesSearch(User user, String query) {
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase();
+        if (normalizedQuery.isEmpty()) {
+            return true;
+        }
+
+        return containsIgnoreCase(user.getUsername(), normalizedQuery)
+                || containsIgnoreCase(user.getEmail(), normalizedQuery)
+                || containsIgnoreCase(user.getFirstName(), normalizedQuery)
+                || containsIgnoreCase(user.getLastName(), normalizedQuery)
+                || user.getId().toString().contains(normalizedQuery)
+                || user.getRoles().stream()
+                .anyMatch(role -> role.getName().name().toLowerCase().contains(normalizedQuery));
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase().contains(query);
+    }
+
+    private List<User> paginateUsers(List<User> users, Optional<Integer> page, Optional<Integer> size) {
+        if (page.isEmpty() && size.isEmpty()) {
+            return users;
+        }
+
+        int safePage = Math.max(0, page.orElse(0));
+        int safeSize = size.orElse(20);
+        if (safeSize <= 0) {
+            safeSize = 20;
+        }
+
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= users.size()) {
+            return List.of();
+        }
+
+        int toIndex = Math.min(fromIndex + safeSize, users.size());
+        return users.subList(fromIndex, toIndex);
+    }
+
+    public static class UserQueryResult {
+        private final List<UserResponse> users;
+        private final long totalItems;
+
+        public UserQueryResult(List<UserResponse> users, long totalItems) {
+            this.users = users;
+            this.totalItems = totalItems;
+        }
+
+        public List<UserResponse> getUsers() {
+            return users;
+        }
+
+        public long getTotalItems() {
+            return totalItems;
+        }
     }
 
     public UserResponse getUserById(Long id) {

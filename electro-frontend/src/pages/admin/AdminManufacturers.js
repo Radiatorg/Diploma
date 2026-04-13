@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { adminAPI, fileAPI } from '../../api/api';
 import { fileAbsoluteUrl } from '../../utils/apiOrigin';
 import AdminNavPanel from '../../components/AdminNavPanel/AdminNavPanel';
+import Pagination from '../../components/UI/Pagination';
 import './Admin.css';
 
 const emptyForm = {
@@ -27,22 +28,50 @@ const AdminManufacturers = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedActive, setSelectedActive] = useState('ALL');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (isFirstLoad) {
+      setLoading(true);
+    }
     try {
-      const res = await adminAPI.getAllManufacturers();
+      const activeParam = selectedActive === 'ALL' ? undefined : selectedActive === 'ACTIVE';
+      const res = await adminAPI.getAllManufacturers({
+        search: searchQuery.trim() || undefined,
+        active: activeParam,
+        sortBy,
+        sortDir,
+        page: currentPage - 1,
+        size: itemsPerPage
+      });
       setList(res.data || []);
+      const totalCountHeader = res.headers?.['x-total-count'];
+      setTotalItems(totalCountHeader ? Number(totalCountHeader) : (res.data || []).length);
       setError('');
     } catch (e) {
       setError('Ошибка загрузки производителей');
     } finally {
-      setLoading(false);
+      if (isFirstLoad) {
+        setLoading(false);
+        setIsFirstLoad(false);
+      }
     }
-  };
+  }, [isFirstLoad, selectedActive, searchQuery, sortBy, sortDir, currentPage, itemsPerPage]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedActive, sortBy, sortDir]);
 
   const openCreate = () => {
     setEditing(null);
@@ -116,10 +145,24 @@ const AdminManufacturers = () => {
     }
   };
 
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortBy(field);
+    setSortDir('asc');
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
+
   if (loading) return <div className="admin-page">Загрузка…</div>;
 
   return (
-    <div className="admin-page manufacturers-admin fade-in">
+    <div className="admin-page manufacturers-admin">
       <AdminNavPanel />
       <div className="page-header">
         <h1>Производители (изготовители)</h1>
@@ -128,15 +171,56 @@ const AdminManufacturers = () => {
         </button>
       </div>
       {error && <p className="error-message">{error}</p>}
+      <div className="admin-search-container">
+        <input
+          type="text"
+          placeholder="Поиск по названию, email, сайту, описанию..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="admin-search-input"
+        />
+        <select
+          value={selectedActive}
+          onChange={(e) => setSelectedActive(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '220px' }}
+        >
+          <option value="ALL">Все статусы</option>
+          <option value="ACTIVE">Только активные</option>
+          <option value="INACTIVE">Только неактивные</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '240px' }}
+        >
+          <option value="name">Сортировка: Название</option>
+          <option value="legalName">Сортировка: Юр. название</option>
+          <option value="email">Сортировка: Email</option>
+          <option value="websiteUrl">Сортировка: Сайт</option>
+          <option value="active">Сортировка: Активность</option>
+          <option value="id">Сортировка: ID</option>
+        </select>
+        <select
+          value={sortDir}
+          onChange={(e) => setSortDir(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '220px' }}
+        >
+          <option value="asc">По возрастанию</option>
+          <option value="desc">По убыванию</option>
+        </select>
+      </div>
 
       <div className="admin-table-container">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Название</th>
-              <th>Email</th>
-              <th>Сайт</th>
-              <th>Активен</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>Название{getSortIndicator('name')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('email')}>Email{getSortIndicator('email')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('websiteUrl')}>Сайт{getSortIndicator('websiteUrl')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('active')}>Активен{getSortIndicator('active')}</th>
               <th>Действия</th>
             </tr>
           </thead>
@@ -179,6 +263,15 @@ const AdminManufacturers = () => {
           </tbody>
         </table>
       </div>
+      {totalItems > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(totalItems / itemsPerPage)}
+          onPageChange={setCurrentPage}
+          itemsPerPage={itemsPerPage}
+          totalItems={totalItems}
+        />
+      )}
 
       {showForm && (
         <div className="modal-overlay">

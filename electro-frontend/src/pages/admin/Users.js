@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { adminAPI } from '../../api/api';
 import { useAuth } from '../../context/AuthContext';
 import AdminNavPanel from '../../components/AdminNavPanel/AdminNavPanel';
@@ -18,21 +18,42 @@ const Users = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20); // Пользователей на странице
+  const [totalItems, setTotalItems] = useState(0);
+  const [selectedRole, setSelectedRole] = useState('ALL');
+  const [sortBy, setSortBy] = useState('id');
+  const [sortDir, setSortDir] = useState('asc');
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
+    if (isFirstLoad) {
+      setLoading(true);
+    }
     try {
-      const response = await adminAPI.getAllUsers();
+      const response = await adminAPI.getAllUsers({
+        page: currentPage - 1,
+        size: itemsPerPage,
+        role: selectedRole !== 'ALL' ? selectedRole : undefined,
+        search: searchQuery.trim() || undefined,
+        sortBy,
+        sortDir
+      });
       setUsers(response.data);
+      const totalCountHeader = response.headers?.['x-total-count'];
+      setTotalItems(totalCountHeader ? Number(totalCountHeader) : response.data.length);
+      setError('');
     } catch (err) {
       setError('Ошибка загрузки пользователей');
     } finally {
-      setLoading(false);
+      if (isFirstLoad) {
+        setLoading(false);
+        setIsFirstLoad(false);
+      }
     }
-  };
+  }, [currentPage, itemsPerPage, selectedRole, searchQuery, sortBy, sortDir, isFirstLoad]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const handleDelete = async (id) => {
     // Проверяем, не пытается ли администратор удалить самого себя
@@ -63,35 +84,30 @@ const Users = () => {
     setShowForm(true);
   };
 
-  const filteredUsers = users.filter(user => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      user.username?.toLowerCase().includes(query) ||
-      user.email?.toLowerCase().includes(query) ||
-      user.firstName?.toLowerCase().includes(query) ||
-      user.lastName?.toLowerCase().includes(query) ||
-      user.roles?.some(role => role.toLowerCase().includes(query)) ||
-      user.id?.toString().includes(query)
-    );
-  });
-
   // Сбрасываем страницу при изменении поиска
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, selectedRole, sortBy, sortDir]);
 
-  // Вычисляем пользователей для текущей страницы
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortBy(field);
+    setSortDir('asc');
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
 
   if (loading) return <div>Загрузка...</div>;
   if (error) return <div className="error">{error}</div>;
 
   return (
-    <div className="admin-page fade-in">
+    <div className="admin-page">
       <AdminNavPanel />
       <div className="page-header">
         <h1>Управление пользователями</h1>
@@ -107,6 +123,43 @@ const Users = () => {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="admin-search-input"
         />
+        <select
+          value={selectedRole}
+          onChange={(e) => setSelectedRole(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '220px' }}
+        >
+          <option value="ALL">Все роли</option>
+          <option value="ADMIN">Администратор</option>
+          <option value="DESIGNER">Проектировщик</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '240px' }}
+        >
+          <option value="id">Сортировка: ID</option>
+          <option value="username">Сортировка: Имя пользователя</option>
+          <option value="email">Сортировка: Email</option>
+          <option value="firstName">Сортировка: Имя</option>
+          <option value="lastName">Сортировка: Фамилия</option>
+          <option value="roles">Сортировка: Роли</option>
+          <option value="phoneNumber">Сортировка: Телефон</option>
+          <option value="birthDate">Сортировка: Дата рождения</option>
+          <option value="enabled">Сортировка: Активность</option>
+          <option value="createdAt">Сортировка: Дата создания</option>
+          <option value="updatedAt">Сортировка: Дата обновления</option>
+        </select>
+        <select
+          value={sortDir}
+          onChange={(e) => setSortDir(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '220px' }}
+        >
+          <option value="asc">По возрастанию</option>
+          <option value="desc">По убыванию</option>
+        </select>
       </div>
       {showForm && (
         <UserForm
@@ -122,24 +175,24 @@ const Users = () => {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Имя пользователя</th>
-              <th>Email</th>
-              <th>Имя</th>
-              <th>Фамилия</th>
-              <th>Роли</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID{getSortIndicator('id')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('username')}>Имя пользователя{getSortIndicator('username')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('email')}>Email{getSortIndicator('email')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('firstName')}>Имя{getSortIndicator('firstName')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('lastName')}>Фамилия{getSortIndicator('lastName')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('roles')}>Роли{getSortIndicator('roles')}</th>
               <th>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {users.length === 0 ? (
               <tr>
                 <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                   {searchQuery ? 'Пользователи не найдены' : 'Нет пользователей'}
                 </td>
               </tr>
             ) : (
-              paginatedUsers.map((user) => (
+              users.map((user) => (
               <tr key={user.id}>
                 <td>{user.id}</td>
                 <td>{user.username}</td>
@@ -169,13 +222,13 @@ const Users = () => {
         </table>
       </div>
       
-      {filteredUsers.length > 0 && (
+      {totalItems > 0 && (
         <Pagination
           currentPage={currentPage}
-          totalPages={Math.ceil(filteredUsers.length / itemsPerPage)}
+          totalPages={Math.ceil(totalItems / itemsPerPage)}
           onPageChange={setCurrentPage}
           itemsPerPage={itemsPerPage}
-          totalItems={filteredUsers.length}
+          totalItems={totalItems}
         />
       )}
       

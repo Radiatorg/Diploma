@@ -41,12 +41,17 @@
 
 .admin-search-container {
   margin-bottom: 1.5rem;
+  margin-right: 20px;
   width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .admin-search-input {
   width: 100%;
   max-width: 500px;
+  margin-right: 12px;
   padding: 0.75rem 1rem;
   border: none;
   border-radius: 12px;
@@ -60,6 +65,10 @@
   box-sizing: border-box;
 }
 
+.admin-search-container .admin-search-input:last-child {
+  margin-right: 0;
+}
+
 .admin-search-input:focus {
   outline: none;
   box-shadow: 
@@ -71,6 +80,43 @@
 .admin-search-input::placeholder {
   color: var(--neomorph-text);
   opacity: 0.5;
+}
+
+/* Выпадающие списки в админ-фильтрах: отдельный визуальный стиль */
+select.admin-search-input,
+.appliances-filter-select {
+  width: auto;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 0.75rem 2.2rem 0.75rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(90, 111, 216, 0.15);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(245, 248, 255, 0.95)),
+    var(--neomorph-bg);
+  box-shadow:
+    3px 3px 8px var(--neomorph-shadow-dark),
+    -3px -3px 8px var(--neomorph-shadow-light);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #5a6fd8 50%),
+    linear-gradient(135deg, #5a6fd8 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 3px),
+    calc(100% - 10px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+select.admin-search-input:focus,
+.appliances-filter-select:focus {
+  border-color: rgba(90, 111, 216, 0.35);
+  box-shadow:
+    0 0 0 2px rgba(90, 111, 216, 0.12),
+    3px 3px 8px var(--neomorph-shadow-dark),
+    -3px -3px 8px var(--neomorph-shadow-light);
 }
 
 .admin-table-container {
@@ -801,6 +847,34 @@
   margin-bottom: 0.85rem;
 }
 
+.appliances-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.appliances-filter-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--neomorph-text);
+}
+
+.appliances-filter-input-sm {
+  width: 110px;
+  max-width: 110px;
+}
+
+.appliances-filter-select {
+  width: auto;
+  min-width: 160px;
+  max-width: 260px;
+}
+
+.appliances-filter-separator {
+  color: var(--neomorph-text);
+  opacity: 0.8;
+}
+
 .admin-projects-filters-row {
   margin-top: 0;
 }
@@ -814,6 +888,14 @@
 
 .appliances-filters-spacer {
   flex: 1 1 auto;
+}
+
+.appliances-excel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .admin-hint {

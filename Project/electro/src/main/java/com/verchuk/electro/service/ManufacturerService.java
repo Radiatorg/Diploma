@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -63,10 +64,41 @@ public class ManufacturerService {
 
     @Transactional(readOnly = true)
     public List<ManufacturerResponse> getAllForAdmin() {
-        return manufacturerRepository.findAll().stream()
-                .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
+        return getAllForAdmin(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty()
+        ).getManufacturers();
+    }
+
+    @Transactional(readOnly = true)
+    public ManufacturerQueryResult getAllForAdmin(Optional<String> search,
+                                                  Optional<Boolean> active,
+                                                  Optional<String> sortBy,
+                                                  Optional<String> sortDir,
+                                                  Optional<Integer> page,
+                                                  Optional<Integer> size) {
+        Comparator<Manufacturer> comparator = buildComparator(sortBy.orElse("name"));
+        if ("desc".equalsIgnoreCase(sortDir.orElse("asc"))) {
+            comparator = comparator.reversed();
+        }
+
+        List<Manufacturer> filteredAndSorted = manufacturerRepository.findAll().stream()
+                .filter(m -> active.map(a -> a.equals(m.getActive())).orElse(true))
+                .filter(m -> search.map(q -> matchesSearch(m, q)).orElse(true))
+                .sorted(comparator)
+                .collect(Collectors.toList());
+
+        long totalItems = filteredAndSorted.size();
+        List<Manufacturer> paginated = paginateManufacturers(filteredAndSorted, page, size);
+
+        List<ManufacturerResponse> result = paginated.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+        return new ManufacturerQueryResult(result, totalItems);
     }
 
     @Transactional(readOnly = true)
@@ -234,5 +266,81 @@ public class ManufacturerService {
             }
         }
         return direct;
+    }
+
+    private Comparator<Manufacturer> buildComparator(String sortBy) {
+        return switch (sortBy) {
+            case "id" -> Comparator.comparing(Manufacturer::getId, nullSafeComparableComparator());
+            case "name" -> Comparator.comparing(Manufacturer::getName, nullSafeStringComparator());
+            case "legalName" -> Comparator.comparing(Manufacturer::getLegalName, nullSafeStringComparator());
+            case "email" -> Comparator.comparing(Manufacturer::getEmail, nullSafeStringComparator());
+            case "websiteUrl" -> Comparator.comparing(Manufacturer::getWebsiteUrl, nullSafeStringComparator());
+            case "active" -> Comparator.comparing(Manufacturer::getActive, nullSafeComparableComparator());
+            default -> Comparator.comparing(Manufacturer::getName, nullSafeStringComparator());
+        };
+    }
+
+    private boolean matchesSearch(Manufacturer m, String searchQuery) {
+        String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty()) {
+            return true;
+        }
+        return containsIgnoreCase(m.getName(), query)
+                || containsIgnoreCase(m.getLegalName(), query)
+                || containsIgnoreCase(m.getEmail(), query)
+                || containsIgnoreCase(m.getWebsiteUrl(), query)
+                || containsIgnoreCase(m.getDescription(), query)
+                || containsIgnoreCase(m.getSocialVk(), query)
+                || containsIgnoreCase(m.getSocialTelegram(), query)
+                || containsIgnoreCase(m.getSocialYoutube(), query)
+                || containsIgnoreCase(m.getSocialInstagram(), query)
+                || String.valueOf(m.getId()).contains(query);
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private List<Manufacturer> paginateManufacturers(List<Manufacturer> manufacturers, Optional<Integer> page, Optional<Integer> size) {
+        if (page.isEmpty() && size.isEmpty()) {
+            return manufacturers;
+        }
+        int safePage = Math.max(0, page.orElse(0));
+        int safeSize = size.orElse(20);
+        if (safeSize <= 0) {
+            safeSize = 20;
+        }
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= manufacturers.size()) {
+            return List.of();
+        }
+        int toIndex = Math.min(fromIndex + safeSize, manufacturers.size());
+        return manufacturers.subList(fromIndex, toIndex);
+    }
+
+    private Comparator<String> nullSafeStringComparator() {
+        return Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private <T extends Comparable<? super T>> Comparator<T> nullSafeComparableComparator() {
+        return Comparator.nullsLast(Comparator.naturalOrder());
+    }
+
+    public static class ManufacturerQueryResult {
+        private final List<ManufacturerResponse> manufacturers;
+        private final long totalItems;
+
+        public ManufacturerQueryResult(List<ManufacturerResponse> manufacturers, long totalItems) {
+            this.manufacturers = manufacturers;
+            this.totalItems = totalItems;
+        }
+
+        public List<ManufacturerResponse> getManufacturers() {
+            return manufacturers;
+        }
+
+        public long getTotalItems() {
+            return totalItems;
+        }
     }
 }

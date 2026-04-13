@@ -10,7 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,9 +24,32 @@ public class RoomTypeService {
     private com.verchuk.electro.repository.RoomRepository roomRepository;
 
     public List<RoomTypeResponse> getAllRoomTypes() {
-        return roomTypeRepository.findAll().stream()
+        return getAllRoomTypes(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty())
+                .getRoomTypes();
+    }
+
+    public RoomTypeQueryResult getAllRoomTypes(Optional<String> search,
+                                               Optional<String> sortBy,
+                                               Optional<String> sortDir,
+                                               Optional<Integer> page,
+                                               Optional<Integer> size) {
+        Comparator<RoomType> comparator = buildComparator(sortBy.orElse("id"));
+        if ("desc".equalsIgnoreCase(sortDir.orElse("asc"))) {
+            comparator = comparator.reversed();
+        }
+
+        List<RoomType> filteredAndSorted = roomTypeRepository.findAll().stream()
+                .filter(roomType -> search.map(q -> matchesSearch(roomType, q)).orElse(true))
+                .sorted(comparator)
+                .collect(Collectors.toList());
+
+        long totalItems = filteredAndSorted.size();
+        List<RoomType> paginated = paginateRoomTypes(filteredAndSorted, page, size);
+
+        List<RoomTypeResponse> result = paginated.stream()
                 .map(this::mapToRoomTypeResponse)
                 .collect(Collectors.toList());
+        return new RoomTypeQueryResult(result, totalItems);
     }
 
     public RoomTypeResponse getRoomTypeById(Long id) {
@@ -118,6 +143,86 @@ public class RoomTypeService {
                 .maxCoefficient(roomType.getMaxCoefficient())
                 .effectiveCoefficient(roomType.getEffectiveCoefficient())
                 .build();
+    }
+
+    private Comparator<RoomType> buildComparator(String sortBy) {
+        return switch (sortBy) {
+            case "id" -> Comparator.comparing(RoomType::getId, nullSafeComparableComparator());
+            case "name" -> Comparator.comparing(RoomType::getName, nullSafeStringComparator());
+            case "description" -> Comparator.comparing(RoomType::getDescription, nullSafeStringComparator());
+            case "minCoefficient" -> Comparator.comparing(RoomType::getMinCoefficient, nullSafeComparableComparator());
+            case "maxCoefficient" -> Comparator.comparing(RoomType::getMaxCoefficient, nullSafeComparableComparator());
+            case "effectiveCoefficient" -> Comparator.comparing(RoomType::getEffectiveCoefficient, nullSafeComparableComparator());
+            default -> Comparator.comparing(RoomType::getId, nullSafeComparableComparator());
+        };
+    }
+
+    private boolean matchesSearch(RoomType roomType, String queryValue) {
+        String query = queryValue == null ? "" : queryValue.trim().toLowerCase();
+        if (query.isEmpty()) {
+            return true;
+        }
+
+        return containsIgnoreCase(roomType.getName(), query)
+                || containsIgnoreCase(roomType.getDescription(), query)
+                || String.valueOf(roomType.getId()).contains(query)
+                || stringValue(roomType.getMinCoefficient()).contains(query)
+                || stringValue(roomType.getMaxCoefficient()).contains(query)
+                || stringValue(roomType.getEffectiveCoefficient()).contains(query);
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? "" : value.toString().toLowerCase();
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase().contains(query);
+    }
+
+    private List<RoomType> paginateRoomTypes(List<RoomType> roomTypes, Optional<Integer> page, Optional<Integer> size) {
+        if (page.isEmpty() && size.isEmpty()) {
+            return roomTypes;
+        }
+
+        int safePage = Math.max(0, page.orElse(0));
+        int safeSize = size.orElse(20);
+        if (safeSize <= 0) {
+            safeSize = 20;
+        }
+
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= roomTypes.size()) {
+            return List.of();
+        }
+
+        int toIndex = Math.min(fromIndex + safeSize, roomTypes.size());
+        return roomTypes.subList(fromIndex, toIndex);
+    }
+
+    private Comparator<String> nullSafeStringComparator() {
+        return Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private <T extends Comparable<? super T>> Comparator<T> nullSafeComparableComparator() {
+        return Comparator.nullsLast(Comparator.naturalOrder());
+    }
+
+    public static class RoomTypeQueryResult {
+        private final List<RoomTypeResponse> roomTypes;
+        private final long totalItems;
+
+        public RoomTypeQueryResult(List<RoomTypeResponse> roomTypes, long totalItems) {
+            this.roomTypes = roomTypes;
+            this.totalItems = totalItems;
+        }
+
+        public List<RoomTypeResponse> getRoomTypes() {
+            return roomTypes;
+        }
+
+        public long getTotalItems() {
+            return totalItems;
+        }
     }
 }
 

@@ -12,7 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,9 +43,46 @@ public class ProjectService {
     }
 
     public List<ProjectResponse> getAllProjects() {
-        return projectRepository.findAll().stream()
+        return getAllProjects(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty()
+        ).getProjects();
+    }
+
+    public ProjectQueryResult getAllProjects(Optional<String> search,
+                                             Optional<LocalDate> dateFrom,
+                                             Optional<LocalDate> dateTo,
+                                             Optional<Long> designerId,
+                                             Optional<String> sortBy,
+                                             Optional<String> sortDir,
+                                             Optional<Integer> page,
+                                             Optional<Integer> size) {
+        Comparator<Project> comparator = buildComparator(sortBy.orElse("id"));
+        if ("desc".equalsIgnoreCase(sortDir.orElse("asc"))) {
+            comparator = comparator.reversed();
+        }
+
+        List<Project> filteredAndSorted = projectRepository.findAll().stream()
+                .filter(project -> search.map(q -> matchesSearch(project, q)).orElse(true))
+                .filter(project -> designerId.map(id -> project.getDesigner() != null && id.equals(project.getDesigner().getId())).orElse(true))
+                .filter(project -> dateFrom.map(from -> project.getCreatedAt() != null && !project.getCreatedAt().isBefore(from.atStartOfDay())).orElse(true))
+                .filter(project -> dateTo.map(to -> project.getCreatedAt() != null && !project.getCreatedAt().isAfter(to.atTime(LocalTime.MAX))).orElse(true))
+                .sorted(comparator)
+                .collect(Collectors.toList());
+
+        long totalItems = filteredAndSorted.size();
+        List<Project> paginated = paginateProjects(filteredAndSorted, page, size);
+
+        List<ProjectResponse> result = paginated.stream()
                 .map(this::mapToProjectResponse)
                 .collect(Collectors.toList());
+        return new ProjectQueryResult(result, totalItems);
     }
 
     @Transactional(readOnly = true)
@@ -199,6 +241,90 @@ public class ProjectService {
                 .createdAt(project.getCreatedAt())
                 .updatedAt(project.getUpdatedAt())
                 .build();
+    }
+
+    private Comparator<Project> buildComparator(String sortBy) {
+        return switch (sortBy) {
+            case "id" -> Comparator.comparing(Project::getId, nullSafeComparableComparator());
+            case "name" -> Comparator.comparing(Project::getName, nullSafeStringComparator());
+            case "description" -> Comparator.comparing(Project::getDescription, nullSafeStringComparator());
+            case "designerUsername" -> Comparator.comparing(this::designerUsername, nullSafeStringComparator());
+            case "roomsCount" -> Comparator.comparing(this::roomsCount, nullSafeComparableComparator());
+            case "appliancesCount" -> Comparator.comparing(this::appliancesCount, nullSafeComparableComparator());
+            case "createdAt" -> Comparator.comparing(Project::getCreatedAt, nullSafeComparableComparator());
+            default -> Comparator.comparing(Project::getId, nullSafeComparableComparator());
+        };
+    }
+
+    private String designerUsername(Project project) {
+        return project.getDesigner() == null ? null : project.getDesigner().getUsername();
+    }
+
+    private Integer roomsCount(Project project) {
+        return project.getRooms() == null ? 0 : project.getRooms().size();
+    }
+
+    private Integer appliancesCount(Project project) {
+        return project.getProjectAppliances() == null ? 0 : project.getProjectAppliances().size();
+    }
+
+    private boolean matchesSearch(Project project, String queryValue) {
+        String query = queryValue == null ? "" : queryValue.trim().toLowerCase();
+        if (query.isEmpty()) {
+            return true;
+        }
+        return containsIgnoreCase(project.getName(), query)
+                || containsIgnoreCase(project.getDescription(), query)
+                || containsIgnoreCase(designerUsername(project), query)
+                || String.valueOf(project.getId()).contains(query)
+                || (project.getCreatedAt() != null && project.getCreatedAt().toLocalDate().toString().contains(query));
+    }
+
+    private boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase().contains(query);
+    }
+
+    private List<Project> paginateProjects(List<Project> projects, Optional<Integer> page, Optional<Integer> size) {
+        if (page.isEmpty() && size.isEmpty()) {
+            return projects;
+        }
+        int safePage = Math.max(0, page.orElse(0));
+        int safeSize = size.orElse(20);
+        if (safeSize <= 0) {
+            safeSize = 20;
+        }
+        int fromIndex = safePage * safeSize;
+        if (fromIndex >= projects.size()) {
+            return List.of();
+        }
+        int toIndex = Math.min(fromIndex + safeSize, projects.size());
+        return projects.subList(fromIndex, toIndex);
+    }
+
+    private Comparator<String> nullSafeStringComparator() {
+        return Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private <T extends Comparable<? super T>> Comparator<T> nullSafeComparableComparator() {
+        return Comparator.nullsLast(Comparator.naturalOrder());
+    }
+
+    public static class ProjectQueryResult {
+        private final List<ProjectResponse> projects;
+        private final long totalItems;
+
+        public ProjectQueryResult(List<ProjectResponse> projects, long totalItems) {
+            this.projects = projects;
+            this.totalItems = totalItems;
+        }
+
+        public List<ProjectResponse> getProjects() {
+            return projects;
+        }
+
+        public long getTotalItems() {
+            return totalItems;
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { adminAPI, fileAPI, categoryAPI, manufacturerAPI } from '../../api/api';
 import { fileAbsoluteUrl } from '../../utils/apiOrigin';
 import AdminNavPanel from '../../components/AdminNavPanel/AdminNavPanel';
@@ -17,10 +17,13 @@ const AdminAppliances = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20); // Приборов на странице
+  const [totalItems, setTotalItems] = useState(0);
   const [priceFrom, setPriceFrom] = useState('');
   const [priceTo, setPriceTo] = useState('');
-  const [sortBy, setSortBy] = useState('name'); // 'name', 'price-asc', 'price-desc'
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [categories, setCategories] = useState([]);
   const [importResult, setImportResult] = useState(null);
   const [pendingImportFile, setPendingImportFile] = useState(null);
@@ -28,7 +31,6 @@ const AdminAppliances = () => {
   const excelImportRef = useRef(null);
 
   useEffect(() => {
-    loadAppliances();
     loadCategories();
   }, []);
 
@@ -41,16 +43,48 @@ const AdminAppliances = () => {
     }
   };
 
-  const loadAppliances = async () => {
+  const loadAppliances = useCallback(async () => {
+    if (isFirstLoad) {
+      setLoading(true);
+    }
     try {
-      const response = await adminAPI.getAllAppliances();
+      const response = await adminAPI.getAllAppliances({
+        page: currentPage - 1,
+        size: itemsPerPage,
+        search: searchQuery.trim() || undefined,
+        category: selectedCategory || undefined,
+        sortBy,
+        sortDir,
+        priceFrom: priceFrom !== '' ? priceFrom : undefined,
+        priceTo: priceTo !== '' ? priceTo : undefined
+      });
       setAppliances(response.data);
+      const totalCountHeader = response.headers?.['x-total-count'];
+      setTotalItems(totalCountHeader ? Number(totalCountHeader) : response.data.length);
+      setError('');
     } catch (err) {
       setError('Ошибка загрузки приборов');
     } finally {
-      setLoading(false);
+      if (isFirstLoad) {
+        setLoading(false);
+        setIsFirstLoad(false);
+      }
     }
-  };
+  }, [
+    currentPage,
+    itemsPerPage,
+    searchQuery,
+    selectedCategory,
+    sortBy,
+    sortDir,
+    priceFrom,
+    priceTo,
+    isFirstLoad
+  ]);
+
+  useEffect(() => {
+    loadAppliances();
+  }, [loadAppliances]);
 
   const handleDelete = async (id) => {
     setConfirmModal({
@@ -114,72 +148,30 @@ const AdminAppliances = () => {
     }
   };
 
-  const filteredAppliances = appliances.filter(appliance => {
-    // Фильтр по поиску
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      const applianceCategories = appliance.categories?.map(c => c.name || c).join(' ') || '';
-      const matchesSearch = 
-        appliance.name?.toLowerCase().includes(query) ||
-        appliance.model?.toLowerCase().includes(query) ||
-        appliance.description?.toLowerCase().includes(query) ||
-        appliance.powerConsumption?.toString().includes(query) ||
-        appliance.voltage?.toString().includes(query) ||
-        appliance.current?.toString().includes(query) ||
-        appliance.price?.toString().includes(query) ||
-        appliance.ipRating?.toLowerCase().includes(query) ||
-        applianceCategories.toLowerCase().includes(query) ||
-        appliance.id?.toString().includes(query);
-      if (!matchesSearch) return false;
-    }
-
-    // Фильтр по цене
-    if (priceFrom || priceTo) {
-      const appliancePrice = parseFloat(appliance.price) || 0;
-      if (priceFrom && appliancePrice < parseFloat(priceFrom)) return false;
-      if (priceTo && appliancePrice > parseFloat(priceTo)) return false;
-    }
-
-    // Фильтр по категории
-    if (selectedCategory) {
-      const applianceCategories = appliance.categories?.map(c => c.name || c) || 
-                                 (appliance.category ? [appliance.category] : []);
-      if (!applianceCategories.includes(selectedCategory)) return false;
-    }
-
-    return true;
-  }).sort((a, b) => {
-    // Сортировка
-    if (sortBy === 'name') {
-      return (a.name || '').localeCompare(b.name || '', 'ru');
-    } else if (sortBy === 'price-asc') {
-      const priceA = parseFloat(a.price) || 0;
-      const priceB = parseFloat(b.price) || 0;
-      return priceA - priceB;
-    } else if (sortBy === 'price-desc') {
-      const priceA = parseFloat(a.price) || 0;
-      const priceB = parseFloat(b.price) || 0;
-      return priceB - priceA;
-    }
-    return 0;
-  });
-
   // Сбрасываем страницу при изменении фильтров
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, priceFrom, priceTo, sortBy, selectedCategory]);
+  }, [searchQuery, priceFrom, priceTo, sortBy, sortDir, selectedCategory]);
 
-  // Вычисляем приборы для текущей страницы
-  const paginatedAppliances = filteredAppliances.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortBy(field);
+    setSortDir('asc');
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
 
   if (loading) return <div>Загрузка...</div>;
   if (error) return <div className="error">{error}</div>;
 
   return (
-    <div className="admin-page appliances-page fade-in">
+    <div className="admin-page appliances-page">
       <AdminNavPanel />
       <div className="page-header">
         <h1>Управление электроприборами</h1>
@@ -197,8 +189,8 @@ const AdminAppliances = () => {
         />
       </div>
       <div className="appliances-filters-row">
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>Цена:</label>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Цена:</label>
           <input
             type="number"
             placeholder="От"
@@ -206,9 +198,9 @@ const AdminAppliances = () => {
             onChange={(e) => setPriceFrom(e.target.value)}
             min="0"
             step="0.01"
-            style={{ width: '100px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+            className="admin-search-input appliances-filter-input-sm"
           />
-          <span>-</span>
+          <span className="appliances-filter-separator">-</span>
           <input
             type="number"
             placeholder="До"
@@ -216,15 +208,15 @@ const AdminAppliances = () => {
             onChange={(e) => setPriceTo(e.target.value)}
             min="0"
             step="0.01"
-            style={{ width: '100px', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+            className="admin-search-input appliances-filter-input-sm"
           />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>Категория:</label>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Категория:</label>
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            style={{ padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', minWidth: '150px' }}
+            className="admin-search-input appliances-filter-select"
           >
             <option value="">Все категории</option>
             {categories.map(cat => (
@@ -232,32 +224,48 @@ const AdminAppliances = () => {
             ))}
           </select>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>Сортировка:</label>
+        <div className="appliances-filter-group">
+          <label className="appliances-filter-label">Сортировка:</label>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            style={{ padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer' }}
+            className="admin-search-input appliances-filter-select"
           >
-            <option value="name">По алфавиту</option>
-            <option value="price-asc">По цене (возрастание)</option>
-            <option value="price-desc">По цене (убывание)</option>
+            <option value="name">Название</option>
+            <option value="powerConsumption">Мощность</option>
+            <option value="voltage">Напряжение</option>
+            <option value="current">Ток</option>
+            <option value="price">Цена</option>
+            <option value="model">Модель</option>
+            <option value="ipRating">IP</option>
+            <option value="categories">Категории</option>
+            <option value="manufacturer">Изготовитель</option>
+          </select>
+          <select
+            value={sortDir}
+            onChange={(e) => setSortDir(e.target.value)}
+            className="admin-search-input appliances-filter-select"
+          >
+            <option value="asc">По возрастанию</option>
+            <option value="desc">По убыванию</option>
           </select>
         </div>
         <div className="appliances-filters-spacer" />
-        <button type="button" className="btn-excel" onClick={downloadAppliancesExcel}>
-          Экспорт Excel
-        </button>
-        <button type="button" className="btn-excel" onClick={() => excelImportRef.current?.click()}>
-          Импорт Excel
-        </button>
-        <input
-          ref={excelImportRef}
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          style={{ display: 'none' }}
-          onChange={onAppliancesExcelImport}
-        />
+        <div className="appliances-excel-actions">
+          <button type="button" className="btn-excel" onClick={downloadAppliancesExcel}>
+            Экспорт Excel
+          </button>
+          <button type="button" className="btn-excel" onClick={() => excelImportRef.current?.click()}>
+            Импорт Excel
+          </button>
+          <input
+            ref={excelImportRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            style={{ display: 'none' }}
+            onChange={onAppliancesExcelImport}
+          />
+        </div>
       </div>
       {showForm && (
         <ApplianceForm
@@ -276,27 +284,27 @@ const AdminAppliances = () => {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Название</th>
-              <th>Мощность (Вт)</th>
-              <th>Напряжение (В)</th>
-              <th>Ток (А)</th>
-              <th>Цена (BYN)</th>
-              <th>Модель</th>
-              <th>IP</th>
-              <th>Категории</th>
-              <th>Изготовитель</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>Название{getSortIndicator('name')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('powerConsumption')}>Мощность (Вт){getSortIndicator('powerConsumption')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('voltage')}>Напряжение (В){getSortIndicator('voltage')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('current')}>Ток (А){getSortIndicator('current')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('price')}>Цена (BYN){getSortIndicator('price')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('model')}>Модель{getSortIndicator('model')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('ipRating')}>IP{getSortIndicator('ipRating')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('categories')}>Категории{getSortIndicator('categories')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('manufacturer')}>Изготовитель{getSortIndicator('manufacturer')}</th>
               <th>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {filteredAppliances.length === 0 ? (
+            {appliances.length === 0 ? (
               <tr>
                 <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                   {searchQuery ? 'Приборы не найдены' : 'Нет приборов'}
                 </td>
               </tr>
             ) : (
-              paginatedAppliances.map((appliance) => (
+              appliances.map((appliance) => (
               <ApplianceRow 
                 key={appliance.id} 
                 appliance={appliance}
@@ -309,13 +317,13 @@ const AdminAppliances = () => {
         </table>
       </div>
       
-      {filteredAppliances.length > 0 && (
+      {totalItems > 0 && (
         <Pagination
           currentPage={currentPage}
-          totalPages={Math.ceil(filteredAppliances.length / itemsPerPage)}
+          totalPages={Math.ceil(totalItems / itemsPerPage)}
           onPageChange={setCurrentPage}
           itemsPerPage={itemsPerPage}
-          totalItems={filteredAppliances.length}
+          totalItems={totalItems}
         />
       )}
       

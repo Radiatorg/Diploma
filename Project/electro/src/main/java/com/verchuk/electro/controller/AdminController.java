@@ -18,10 +18,13 @@ import com.verchuk.electro.service.StatisticsService;
 import com.verchuk.electro.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
@@ -44,8 +47,26 @@ public class AdminController {
 
     // User Management
     @GetMapping("/users")
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    public ResponseEntity<List<UserResponse>> getAllUsers(@RequestParam(required = false) String role,
+                                                           @RequestParam(required = false) String search,
+                                                           @RequestParam(required = false) String sortBy,
+                                                           @RequestParam(required = false) String sortDir,
+                                                           @RequestParam(required = false) Integer page,
+                                                           @RequestParam(required = false) Integer size) {
+        UserService.UserQueryResult result = userService.getAllUsers(
+                Optional.ofNullable(role),
+                Optional.ofNullable(search),
+                Optional.ofNullable(sortBy),
+                Optional.ofNullable(sortDir),
+                Optional.ofNullable(page),
+                Optional.ofNullable(size)
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Total-Count", String.valueOf(result.getTotalItems()));
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(result.getUsers());
     }
 
     @GetMapping("/users/{id}")
@@ -95,8 +116,24 @@ public class AdminController {
 
     // Room Type Management
     @GetMapping("/room-types")
-    public ResponseEntity<List<RoomTypeResponse>> getAllRoomTypes() {
-        return ResponseEntity.ok(roomTypeService.getAllRoomTypes());
+    public ResponseEntity<List<RoomTypeResponse>> getAllRoomTypes(@RequestParam(required = false) String search,
+                                                                   @RequestParam(required = false) String sortBy,
+                                                                   @RequestParam(required = false) String sortDir,
+                                                                   @RequestParam(required = false) Integer page,
+                                                                   @RequestParam(required = false) Integer size) {
+        RoomTypeService.RoomTypeQueryResult result = roomTypeService.getAllRoomTypes(
+                Optional.ofNullable(search),
+                Optional.ofNullable(sortBy),
+                Optional.ofNullable(sortDir),
+                Optional.ofNullable(page),
+                Optional.ofNullable(size)
+        );
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Total-Count", String.valueOf(result.getTotalItems()));
+        headers.add("Access-Control-Expose-Headers", "X-Total-Count");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(result.getRoomTypes());
     }
 
     @PostMapping("/room-types")
@@ -118,8 +155,30 @@ public class AdminController {
 
     // Project Viewing
     @GetMapping("/projects")
-    public ResponseEntity<List<ProjectResponse>> getAllProjects() {
-        return ResponseEntity.ok(projectService.getAllProjects());
+    public ResponseEntity<List<ProjectResponse>> getAllProjects(@RequestParam(required = false) String search,
+                                                                @RequestParam(required = false) LocalDate dateFrom,
+                                                                @RequestParam(required = false) LocalDate dateTo,
+                                                                @RequestParam(required = false) Long designerId,
+                                                                @RequestParam(required = false) String sortBy,
+                                                                @RequestParam(required = false) String sortDir,
+                                                                @RequestParam(required = false) Integer page,
+                                                                @RequestParam(required = false) Integer size) {
+        ProjectService.ProjectQueryResult result = projectService.getAllProjects(
+                Optional.ofNullable(search),
+                Optional.ofNullable(dateFrom),
+                Optional.ofNullable(dateTo),
+                Optional.ofNullable(designerId),
+                Optional.ofNullable(sortBy),
+                Optional.ofNullable(sortDir),
+                Optional.ofNullable(page),
+                Optional.ofNullable(size)
+        );
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Total-Count", String.valueOf(result.getTotalItems()));
+        headers.add("Access-Control-Expose-Headers", "X-Total-Count");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(result.getProjects());
     }
 
     @GetMapping("/projects/{id}")

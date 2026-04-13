@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Optional;
 
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
@@ -27,8 +28,26 @@ public class AdminManufacturerController {
     private ExcelDataExchangeService excelDataExchangeService;
 
     @GetMapping
-    public ResponseEntity<List<ManufacturerResponse>> getAll() {
-        return ResponseEntity.ok(manufacturerService.getAllForAdmin());
+    public ResponseEntity<List<ManufacturerResponse>> getAll(@RequestParam(required = false) String search,
+                                                             @RequestParam(required = false) Boolean active,
+                                                             @RequestParam(required = false) String sortBy,
+                                                             @RequestParam(required = false) String sortDir,
+                                                             @RequestParam(required = false) Integer page,
+                                                             @RequestParam(required = false) Integer size) {
+        ManufacturerService.ManufacturerQueryResult result = manufacturerService.getAllForAdmin(
+                Optional.ofNullable(search),
+                Optional.ofNullable(active),
+                Optional.ofNullable(sortBy),
+                Optional.ofNullable(sortDir),
+                Optional.ofNullable(page),
+                Optional.ofNullable(size)
+        );
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Total-Count", String.valueOf(result.getTotalItems()));
+        headers.add("Access-Control-Expose-Headers", "X-Total-Count");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(result.getManufacturers());
     }
 
     @GetMapping("/{id}")

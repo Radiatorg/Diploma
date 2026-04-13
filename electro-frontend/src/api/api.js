@@ -154,26 +154,26 @@ export const savedSpecificationAPI = {
 // Admin API
 export const adminAPI = {
   // Users
-  getAllUsers: () => api.get('/admin/users'),
+  getAllUsers: (params = {}) => api.get('/admin/users', { params }),
   getUserById: (id) => api.get(`/admin/users/${id}`),
   createUser: (data, roles) => api.post('/admin/users', data, { params: { roles } }),
   updateUser: (id, data, roles) => api.put(`/admin/users/${id}`, data, { params: { roles } }),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
   
   // Appliances
-  getAllAppliances: () => api.get('/appliances'),
+  getAllAppliances: (params = {}) => api.get('/appliances', { params }),
   createAppliance: (data) => api.post('/admin/appliances', data),
   updateAppliance: (id, data) => api.put(`/admin/appliances/${id}`, data),
   deleteAppliance: (id) => api.delete(`/admin/appliances/${id}`),
   
   // Room Types
-  getAllRoomTypes: () => api.get('/admin/room-types'),
+  getAllRoomTypes: (params = {}) => api.get('/admin/room-types', { params }),
   createRoomType: (data) => api.post('/admin/room-types', data),
   updateRoomType: (id, data) => api.put(`/admin/room-types/${id}`, data),
   deleteRoomType: (id) => api.delete(`/admin/room-types/${id}`),
   
   // Projects
-  getAllProjects: () => api.get('/admin/projects'),
+  getAllProjects: (params = {}) => api.get('/admin/projects', { params }),
   getProjectById: (id) => api.get(`/admin/projects/${id}`),
   
   // Project details (admin can access designer endpoints)
@@ -187,7 +187,7 @@ export const adminAPI = {
   getManufacturerStatistics: () => api.get('/admin/statistics/manufacturers'),
 
   // Manufacturers (admin)
-  getAllManufacturers: () => api.get('/admin/manufacturers'),
+  getAllManufacturers: (params = {}) => api.get('/admin/manufacturers', { params }),
   getManufacturerById: (id) => api.get(`/admin/manufacturers/${id}`),
   createManufacturer: (data) => api.post('/admin/manufacturers', data),
   updateManufacturer: (id, data) => api.put(`/admin/manufacturers/${id}`, data),

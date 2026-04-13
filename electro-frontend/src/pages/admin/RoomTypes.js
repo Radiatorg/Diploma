@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { adminAPI } from '../../api/api';
 import AdminNavPanel from '../../components/AdminNavPanel/AdminNavPanel';
 import Modal from '../../components/UI/Modal';
+import Pagination from '../../components/UI/Pagination';
 import './Admin.css';
 
 const RoomTypes = () => {
@@ -13,21 +14,46 @@ const RoomTypes = () => {
   const [confirmModal, setConfirmModal] = useState({ show: false, roomTypeId: null, onConfirm: null });
   const [errorModal, setErrorModal] = useState({ show: false, message: '' });
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [totalItems, setTotalItems] = useState(0);
+  const [sortBy, setSortBy] = useState('id');
+  const [sortDir, setSortDir] = useState('asc');
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  useEffect(() => {
-    loadRoomTypes();
-  }, []);
-
-  const loadRoomTypes = async () => {
+  const loadRoomTypes = useCallback(async () => {
+    if (isFirstLoad) {
+      setLoading(true);
+    }
     try {
-      const response = await adminAPI.getAllRoomTypes();
+      const response = await adminAPI.getAllRoomTypes({
+        search: searchQuery.trim() || undefined,
+        sortBy,
+        sortDir,
+        page: currentPage - 1,
+        size: itemsPerPage
+      });
       setRoomTypes(response.data);
+      const totalCountHeader = response.headers?.['x-total-count'];
+      setTotalItems(totalCountHeader ? Number(totalCountHeader) : response.data.length);
+      setError('');
     } catch (err) {
       setError('Ошибка загрузки типов комнат');
     } finally {
-      setLoading(false);
+      if (isFirstLoad) {
+        setLoading(false);
+        setIsFirstLoad(false);
+      }
     }
-  };
+  }, [currentPage, itemsPerPage, searchQuery, sortBy, sortDir, isFirstLoad]);
+
+  useEffect(() => {
+    loadRoomTypes();
+  }, [loadRoomTypes]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortBy, sortDir]);
 
   const handleDelete = async (id) => {
     setConfirmModal({
@@ -51,24 +77,25 @@ const RoomTypes = () => {
     setShowForm(true);
   };
 
-  const filteredRoomTypes = roomTypes.filter(roomType => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      roomType.name?.toLowerCase().includes(query) ||
-      roomType.description?.toLowerCase().includes(query) ||
-      roomType.minCoefficient?.toString().includes(query) ||
-      roomType.maxCoefficient?.toString().includes(query) ||
-      roomType.effectiveCoefficient?.toString().includes(query) ||
-      roomType.id?.toString().includes(query)
-    );
-  });
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortBy(field);
+    setSortDir('asc');
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
 
   if (loading) return <div>Загрузка...</div>;
   if (error) return <div className="error">{error}</div>;
 
   return (
-    <div className="admin-page fade-in">
+    <div className="admin-page">
       <AdminNavPanel />
       <div className="page-header">
         <h1>Управление типами помещений</h1>
@@ -84,6 +111,28 @@ const RoomTypes = () => {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="admin-search-input"
         />
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '260px' }}
+        >
+          <option value="id">Сортировка: ID</option>
+          <option value="name">Сортировка: Название</option>
+          <option value="description">Сортировка: Описание</option>
+          <option value="minCoefficient">Сортировка: Мин. коэффициент</option>
+          <option value="maxCoefficient">Сортировка: Макс. коэффициент</option>
+          <option value="effectiveCoefficient">Сортировка: Эффективный</option>
+        </select>
+        <select
+          value={sortDir}
+          onChange={(e) => setSortDir(e.target.value)}
+          className="admin-search-input"
+          style={{ maxWidth: '220px' }}
+        >
+          <option value="asc">По возрастанию</option>
+          <option value="desc">По убыванию</option>
+        </select>
       </div>
       {showForm && (
         <RoomTypeForm
@@ -99,23 +148,23 @@ const RoomTypes = () => {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Название</th>
-              <th>Коэффициент (мин)</th>
-              <th>Коэффициент (макс)</th>
-              <th>Эффективный</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('id')}>ID{getSortIndicator('id')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>Название{getSortIndicator('name')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('minCoefficient')}>Коэффициент (мин){getSortIndicator('minCoefficient')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('maxCoefficient')}>Коэффициент (макс){getSortIndicator('maxCoefficient')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('effectiveCoefficient')}>Эффективный{getSortIndicator('effectiveCoefficient')}</th>
               <th>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {filteredRoomTypes.length === 0 ? (
+            {roomTypes.length === 0 ? (
               <tr>
                 <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                   {searchQuery ? 'Типы помещений не найдены' : 'Нет типов помещений'}
                 </td>
               </tr>
             ) : (
-              filteredRoomTypes.map((roomType) => (
+              roomTypes.map((roomType) => (
                 <tr key={roomType.id}>
                   <td>{roomType.id}</td>
                   <td>{roomType.name}</td>
@@ -144,6 +193,15 @@ const RoomTypes = () => {
           </tbody>
         </table>
       </div>
+      {totalItems > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(totalItems / itemsPerPage)}
+          onPageChange={setCurrentPage}
+          itemsPerPage={itemsPerPage}
+          totalItems={totalItems}
+        />
+      )}
       <Modal
         show={confirmModal.show}
         title="Подтверждение"
