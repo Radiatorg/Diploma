@@ -1,0 +1,56 @@
+---
+description: Project overview, stack, structure, and running instructions for Electro
+alwaysApply: true
+---
+
+# Electro — Project Overview
+
+**Electro** is a web app for designing electrical power supply of residential premises per **TKP 339-2022** (Belarus).
+
+## Stack
+- **Frontend**: React 19 (CRA), port 3000 dev / 80 Docker
+- **Backend**: Spring Boot 3.5.7, Java 17, port 8080
+- **Database**: PostgreSQL 15 (port 5433 in Docker, 5432 local)
+- **Auth**: JWT HMAC-SHA-512, 24h expiry, stored in `localStorage`
+- **Roles**: `DESIGNER` (default user), `ADMIN`
+
+## Monorepo Layout
+```
+diploma/
+├── docker-compose.yml
+├── electro-frontend/        # React SPA
+└── Project/electro/         # Spring Boot REST API
+```
+
+## Running Locally
+```bash
+# Backend (needs PostgreSQL on :5432, db=electrodb, user=postgres/1111)
+cd Project/electro && ./mvnw spring-boot:run
+
+# Frontend
+cd electro-frontend && npm install --legacy-peer-deps && npm start
+```
+
+## Code Language Rules
+- **UI text / user messages**: Russian
+- **Variables, classes, comments**: English
+- **API**: JSON; dates ISO 8601
+- **Files**: `multipart/form-data`, stored in `uploads/`; max 10 MB
+
+## API Route Prefixes
+| Prefix | Access |
+|--------|--------|
+| `/api/auth/**` | Public |
+| `/api/designer/**` | DESIGNER + ADMIN |
+| `/api/admin/**` | ADMIN only |
+| `/api/appliances`, `/api/manufacturers`, `/api/categories` | Authenticated (read-only) |
+| `/api/chat/**` | DESIGNER + ADMIN |
+| `/ws/**` | Authenticated (STOMP + SockJS) |
+
+## Docker
+```bash
+docker-compose up --build
+# Frontend → http://localhost:3000
+# Backend  → http://localhost:8080
+```
+Nginx proxies `/api/` and `/ws/` to `server:8080`.

@@ -1,0 +1,69 @@
+---
+description: TKP 339-2022 domain knowledge, key concepts, and validation rules for Electro
+alwaysApply: false
+---
+
+# TKP 339-2022 Domain — Electro
+
+The project implements Belarusian electrical design standard **TKP 339-2022** for residential premises.
+
+## Key Domain Concepts
+| Concept | Description |
+|---------|-------------|
+| **Project** | Design object (apartment/house): grounding system, voltage, total area |
+| **Room** | Room with type, area, window count, socket groups, position on floor plan |
+| **RoomType** | Kitchen, bedroom, bathroom, etc. — drives min outlets and coefficients |
+| **Appliance** | Equipment model: power (W), current (A), voltage (V), price (BYN), IP rating |
+| **ElectricalPoint** | Outlet / switch / light fixture placed on floor plan |
+| **ElectricalSymbol** | SVG symbol per TKP 339 (type: outlet/switch/light/panel/junction_box) |
+| **Circuit** | Group of electrical points with circuit breaker (A) and RCD (mA) |
+| **CableRun** | Cable routing path |
+| **Specification** | Final equipment + materials list with prices |
+| **LoadCalculation** | Total power, currents, cable cross-sections |
+
+## TKP 339 Key Rules
+
+### Outlets
+- Minimum outlet count depends on **room type** and **area** → `calculateMinOutlets(roomType, area)`
+- Validate area per room type → `validateRoomArea(roomType, area)`
+
+### Bathroom Safety Zones (0, 1, 2, 3)
+- Each zone has IP-rating restrictions for outlets, switches, and lights
+- Zone 0 (inside bathtub/shower): no electrical equipment
+- RCD **mandatory** for wet rooms → `requiresRCD(roomType)`
+- Check placement: `checkBathroomOutletPlacement(zone, ipRating)`
+
+### Separate Lines
+- High-power appliances (electric stove, water heater, etc.) **must** have a dedicated circuit
+- `requiresSeparateLine(appliancePower)` — returns true if separate line needed
+
+### IP Ratings
+```js
+getRequiredIPRatingForOutlet(roomType, zone)  // min IP for outlet
+getRequiredIPRatingForSwitch(roomType, zone)  // min IP for switch
+getRequiredIPRatingForLight(roomType, zone)   // min IP for light
+```
+
+### Cable Cross-Section
+- Calculated from allowable current per cable type (Cu/Al, cross-section mm²)
+- `CableType` entity: material, crossSectionMm2, pricePerMeter
+
+## Frontend Utilities (`src/utils/`)
+| File | Purpose |
+|------|---------|
+| `tkp339Validations.js` | All TKP 339 validation and calculation functions |
+| `electricalSymbolSelector.js` | Auto-select symbol by room type and zone |
+| `currencyService.js` | USD→BYN via NBRB API (1-hour cache) |
+
+## Backend Services
+| Service | Purpose |
+|---------|---------|
+| `TKP339CalculationService` | Load calculations per TKP 339 |
+| `TKP339ValidationService` | Validation rules per TKP 339 |
+| `Tkp339NormsProvider` | Normative coefficients and rules |
+| `ElectricalSymbolSelectorService` | Auto-select symbols by room type/zone |
+| `CalculationNormsProvider` | General calculation coefficients |
+
+## Currency
+- All prices in **BYN** (Belarusian ruble)
+- USD conversion via NBRB API (`currencyService.js`)

@@ -1,0 +1,79 @@
+---
+description: Step-by-step checklist for adding a new entity to the Electro project (full-stack)
+alwaysApply: false
+---
+
+# Adding a New Entity — Full-Stack Checklist
+
+Follow this order when adding any new entity to the Electro project.
+
+## 1. JPA Entity (`model/`)
+```java
+@Entity
+@Table(name = "my_entities")
+public class MyEntity {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @NotBlank
+    private String name;
+
+    private boolean active = true; // soft-delete flag when needed
+
+    // relationships, getters/setters (or @Data with Lombok)
+}
+```
+
+## 2. Repository (`repository/`)
+```java
+public interface MyEntityRepository extends JpaRepository<MyEntity, Long> {
+    List<MyEntity> findByActiveTrue();
+    // add custom @Query methods as needed
+}
+```
+
+## 3. DTOs (`dto/request/` + `dto/response/`)
+```java
+// Request DTO — with validation
+public class MyEntityRequest {
+    @NotBlank private String name;
+}
+
+// Response DTO — plain POJO
+public class MyEntityResponse {
+    private Long id;
+    private String name;
+}
+```
+
+## 4. Service (`service/`)
+- CRUD methods + business logic
+- Inject repository, throw `ResourceNotFoundException` on missing records
+- Map Entity ↔ DTO manually (no MapStruct)
+
+## 5. Controllers
+- **Public/designer**: `@RestController @RequestMapping("/api/designer/my-entities")` with `@PreAuthorize` or rely on SecurityConfig
+- **Admin**: `@RestController @RequestMapping("/api/admin/my-entities")` for CRUD management
+
+## 6. Data Initializer
+- Add seed data to `DataInitializer.java` (always-run) or `TestDataInitializer.java` (test only)
+
+## 7. Frontend API (`electro-frontend/src/api/api.js`)
+```js
+export const myEntityAPI = {
+  getAll: () => api.get('/my-entities'),
+  getById: (id) => api.get(`/my-entities/${id}`),
+  create: (data) => api.post('/designer/my-entities', data),
+  update: (id, data) => api.put(`/designer/my-entities/${id}`, data),
+  delete: (id) => api.delete(`/designer/my-entities/${id}`),
+};
+```
+
+## 8. Frontend Pages (`pages/`)
+- List page with filter/sort/pagination using `UI/Pagination`
+- Form page (create + edit) with controlled inputs → submit → navigate
+- Add routes in `App.js` wrapped in `<ProtectedRoute>`
+
+## Optional Steps
+- **Excel import/export**: extend `ExcelDataExchangeService` + `AdminApplianceExcelController` pattern
+- **File upload**: use `FileService` + `fileAPI` on frontend

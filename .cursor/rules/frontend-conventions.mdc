@@ -1,0 +1,70 @@
+---
+description: React frontend conventions, patterns, and structure for electro-frontend
+globs: electro-frontend/**/*.{js,jsx,css}
+alwaysApply: false
+---
+
+# Frontend Conventions (electro-frontend)
+
+## Key Dependencies
+- `react@^19.2.0`, `react-router-dom@^7.9.5`
+- `axios@^1.13.2` — HTTP client
+- `three@^0.183.2` — 3D floor plan
+- `@stomp/stompjs` + `sockjs-client` — WebSocket chat
+- `recharts@^3.6.0` — admin charts
+- `jspdf@^3.0.4` + `jspdf-autotable` — PDF export
+
+## Component Rules
+- Functional components + hooks only (no class components)
+- Each major component in its own folder: `ComponentName/ComponentName.js` + `ComponentName.css`
+- Styles: **separate .css files** next to component (no CSS Modules, no styled-components)
+- `PascalCase` for component names and files; `camelCase` for variables, functions, props
+
+## State Management
+- `useState` / `useEffect` for local state
+- `AuthContext` (via `useAuth()`) for global auth state only
+- **No Redux / Zustand / MobX** — pass state via props and context
+
+## Common UI Patterns
+```js
+// Modal
+<Modal show={show} title="..." onClose={...} onConfirm={...} type="confirm" />
+
+// Pagination
+<Pagination currentPage={page} totalPages={total} onPageChange={setPage} />
+
+// Forms: controlled inputs → submit → API → navigate
+const [field, setField] = useState('');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await someAPI.create({ field });
+    navigate('/somewhere');
+  } catch (err) {
+    setError(err.response?.data?.message || 'Ошибка');
+  }
+};
+
+// Loading state
+if (loading) return <div>Загрузка...</div>;
+```
+
+## API Layer (`src/api/api.js`)
+- Single Axios instance; base URL from `src/utils/apiOrigin.js`
+- Request interceptor: adds `Authorization: Bearer <token>` from `localStorage`
+- Response interceptor: on `401` → clear localStorage + redirect to `/login`
+- Import named modules: `authAPI`, `projectAPI`, `roomAPI`, `calculationAPI`, etc.
+
+## Authentication (`useAuth()`)
+```js
+const { user, login, logout, hasRole, isAdmin, isDesigner } = useAuth();
+```
+- Token in `localStorage.token`, user in `localStorage.user`
+- `ProtectedRoute` wraps all authenticated routes
+
+## Routing
+- `useNavigate()` for programmatic navigation
+- `useParams()` for route params
+- `<Link>` for JSX links
+- Header hidden on `/login`, `/register`
+- Fullscreen on `/projects/:id/floor-plan/3d`

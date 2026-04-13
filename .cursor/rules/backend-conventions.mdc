@@ -1,0 +1,79 @@
+---
+description: Spring Boot backend conventions, architecture, and patterns for Project/electro
+globs: Project/electro/**/*.java
+alwaysApply: false
+---
+
+# Backend Conventions (Project/electro)
+
+## Stack
+Spring Boot 3.5.7, Java 17, PostgreSQL 15. JWT auth (HMAC-SHA-512, 24h).
+
+## Layered Architecture
+```
+Controller → Service → Repository → JPA Entity
+```
+- Controllers convert Entity ↔ DTO (manual mapping, no MapStruct)
+- Stateless REST (JWT, no server sessions)
+- Cascade deletion: projects → rooms → points (JPA `cascade`)
+
+## Naming
+| Layer | Convention | Example |
+|-------|-----------|---------|
+| Classes | `PascalCase` | `ProjectController` |
+| Fields/Methods | `camelCase` | `projectService` |
+| REST paths | `kebab-case` | `/cable-types`, `/floor-plan` |
+| Request DTOs | `*Request` | `ProjectRequest` |
+| Response DTOs | `*Response` | `ProjectResponse` |
+| Controllers | `*Controller` | `RoomController` |
+| Services | `*Service` | `CalculationService` |
+| Repositories | `*Repository` | `ProjectRepository` |
+
+## DTO Conventions
+- **Request DTOs** (`dto/request/`): use `jakarta.validation` annotations (`@NotBlank`, `@NotNull`, `@Min`, `@Max`, `@Email`)
+- **Response DTOs** (`dto/response/`): plain POJOs, no validation annotations
+
+## Security Rules
+```java
+.requestMatchers("/api/auth/**").permitAll()
+.requestMatchers("/api/admin/**").hasRole("ADMIN")
+.requestMatchers("/api/designer/**").hasAnyRole("DESIGNER", "ADMIN")
+.requestMatchers("/api/chat/**").hasAnyRole("DESIGNER", "ADMIN")
+.requestMatchers("/ws/**").authenticated()
+.anyRequest().authenticated()
+```
+Sessions: `STATELESS`. CSRF: disabled. Passwords: BCrypt.
+
+## Error Handling
+```java
+// Throw these — GlobalExceptionHandler maps them to HTTP status:
+throw new ResourceNotFoundException("Project not found"); // → 404
+throw new BadRequestException("Invalid input");           // → 400
+// Validation errors (@Valid on @RequestBody) → 400 with field details
+```
+
+## WebSocket
+- Endpoint: `/ws` (SockJS fallback)
+- Brokers: `/topic`, `/queue`; app prefix: `/app`
+- Send: `@MessageMapping("/send")` → publish to `/topic/messages`
+
+## File Storage
+```
+uploads/
+├── appliances/    # Appliance images
+├── manufacturers/ # Logos
+├── profiles/      # User photos
+├── chat/          # Chat attachments
+└── general/
+```
+Upload: `POST /api/files/upload` (max 10 MB). Download: `GET /api/files/{filename}`.
+
+## Key Calculation Services
+| Service | Purpose |
+|---------|---------|
+| `CalculationService` | Power, current, cost, cable lengths |
+| `TKP339CalculationService` | Calculations per TKP 339-2022 |
+| `TKP339ValidationService` | Validation per TKP 339 |
+| `SpecificationService` | Equipment specification generation |
+| `PdfExportService` | PDF via iText HTML2PDF |
+| `ExcelDataExchangeService` | Excel import/export via Apache POI |
