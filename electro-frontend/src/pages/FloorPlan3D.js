@@ -566,6 +566,23 @@ const FloorPlan3D = () => {
     return intersects[0]?.object?.userData?.wallFace || null;
   }, []);
 
+  const getPointerWallHit = useCallback((event) => {
+    if (!rendererRef.current || !cameraRef.current || wallHoverMeshesRef.current.length === 0) return null;
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const intersects = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
+    if (!intersects.length) return null;
+    return {
+      point: intersects[0].point,
+      wallFace: intersects[0]?.object?.userData?.wallFace || null,
+    };
+  }, []);
+
   const getDistanceToNearestCorner = useCallback((point, bounds) => {
     if (!point || !bounds) return null;
     const corners = [
@@ -1003,16 +1020,17 @@ const FloorPlan3D = () => {
       setHoveredWallFace(hoveredFace);
     }
 
-    const groundHit = getGroundIntersection(event);
-    if (groundHit && selectedRoomBounds) {
-      const contextPoint = snapPointToSurface(groundHit, surfaceMode === 'wall' ? routeHeight : pointHeight);
-      if (contextPoint) {
-        const nearestCornerM = getDistanceToNearestCorner(contextPoint, selectedRoomBounds);
-        let surfaceLabel = 'Пол';
-        if (surfaceMode === 'ceiling') {
-          surfaceLabel = 'Потолок';
-        } else if (surfaceMode === 'wall') {
-          if (hoveredFace) {
+    if (selectedRoomBounds) {
+      let contextPoint = null;
+      let surfaceLabel = 'Пол';
+
+      if (surfaceMode === 'wall') {
+        const wallHit = getPointerWallHit(event);
+        if (wallHit?.point) {
+          contextPoint = wallHit.point;
+          if (wallHit.wallFace) {
+            surfaceLabel = getWallFaceLabel(wallHit.wallFace);
+          } else if (hoveredFace) {
             surfaceLabel = getWallFaceLabel(hoveredFace);
           } else if (wallFaceMode !== 'auto') {
             surfaceLabel = getWallFaceLabel(wallFaceMode);
@@ -1020,12 +1038,33 @@ const FloorPlan3D = () => {
             surfaceLabel = 'Стена (авто)';
           }
         }
+      } else if (surfaceMode === 'ceiling') {
+        const ceilingHit = getIntersectionOnHeight(event, ROOM_HEIGHT_M - 0.05);
+        if (ceilingHit && isPointInsideBounds(ceilingHit, selectedRoomBounds)) {
+          contextPoint = new THREE.Vector3(ceilingHit.x, ROOM_HEIGHT_M - 0.05, ceilingHit.z);
+          surfaceLabel = 'Потолок';
+        }
+      } else {
+        const groundHit = getGroundIntersection(event);
+        if (groundHit) {
+          const snapped = snapPointToSurface(groundHit, pointHeight);
+          if (snapped) {
+            contextPoint = snapped;
+            surfaceLabel = 'Пол';
+          }
+        }
+      }
+
+      if (contextPoint) {
+        const nearestCornerM = getDistanceToNearestCorner(contextPoint, selectedRoomBounds);
         setCursorContext({
           surface: surfaceLabel,
           heightCm: Number(toCentimeters(contextPoint.y).toFixed(0)),
           nearestCornerM,
           circuitName: selectedCircuit?.name || 'Без цепи',
         });
+      } else {
+        setCursorContext(null);
       }
     } else {
       setCursorContext(null);
