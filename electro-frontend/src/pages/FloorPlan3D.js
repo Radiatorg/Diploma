@@ -63,6 +63,7 @@ const FloorPlan3D = () => {
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [surfaceMode, setSurfaceMode] = useState('wall');
   const [wallFaceMode, setWallFaceMode] = useState('auto');
+  const [wallViewFace, setWallViewFace] = useState('north');
   const [parallelOffsetCm, setParallelOffsetCm] = useState(0);
   const [projectAppliances, setProjectAppliances] = useState([]);
   const [calculationReport, setCalculationReport] = useState(null);
@@ -1108,12 +1109,49 @@ const FloorPlan3D = () => {
     setRouteHeight((prev) => (prev || 10));
   }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls]);
 
-  const setCameraToWallPlane = useCallback((roomId) => {
-    enterRoom(roomId);
+  const setCameraToWallPlane = useCallback((roomId, face = wallViewFace) => {
+    const room = sceneData.rooms.find((r) => r.id === roomId);
+    const bounds = getRoomBounds(room, sceneData.walls);
+    setSelectedRoomId(roomId);
+    if (!bounds || !cameraRef.current || !controlsRef.current) return;
+
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+    const inwardPadding = 0.16;
+    const eyeHeight = Math.min(Math.max(1.65, ROOM_HEIGHT_M * 0.58), ROOM_HEIGHT_M - 0.35);
+    const targetHeight = Math.min(Math.max(1.45, ROOM_HEIGHT_M * 0.5), ROOM_HEIGHT_M - 0.45);
+
+    let cameraX = centerX;
+    let cameraZ = centerZ;
+    let targetX = centerX;
+    let targetZ = centerZ;
+
+    if (face === 'north') {
+      cameraZ = Math.min(bounds.maxZ - inwardPadding, centerZ + 0.85);
+      targetZ = bounds.minZ + inwardPadding;
+    } else if (face === 'south') {
+      cameraZ = Math.max(bounds.minZ + inwardPadding, centerZ - 0.85);
+      targetZ = bounds.maxZ - inwardPadding;
+    } else if (face === 'west') {
+      cameraX = Math.min(bounds.maxX - inwardPadding, centerX + 0.85);
+      targetX = bounds.minX + inwardPadding;
+    } else if (face === 'east') {
+      cameraX = Math.max(bounds.minX + inwardPadding, centerX - 0.85);
+      targetX = bounds.maxX - inwardPadding;
+    } else {
+      cameraZ = Math.min(bounds.maxZ - inwardPadding, centerZ + 0.85);
+      targetZ = bounds.minZ + inwardPadding;
+    }
+
+    cameraRef.current.position.set(cameraX, eyeHeight, cameraZ);
+    controlsRef.current.target.set(targetX, targetHeight, targetZ);
+    controlsRef.current.update();
+    setInsideRoomView(true);
     setSurfaceMode('wall');
     setRoutePlacementMode('wall');
     setRouteHeight((prev) => (prev || 120));
-  }, [enterRoom]);
+    setWallFaceMode(face === 'auto' ? 'auto' : face);
+  }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls, wallViewFace]);
 
   const setCameraToCeilingPlane = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
@@ -2209,13 +2247,57 @@ const FloorPlan3D = () => {
                   >
                     Вид сверху (пол)
                   </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setCameraToWallPlane(selectedRoom.id)}
-                  >
-                    Вид по стенам
-                  </button>
+                  <div className="wall-view-dropdown">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setCameraToWallPlane(selectedRoom.id, wallViewFace)}
+                    >
+                      Вид по стенам
+                    </button>
+                    <div className="wall-view-dropdown-menu">
+                      <button
+                        type="button"
+                        className={wallViewFace === 'north' ? 'wall-view-option active' : 'wall-view-option'}
+                        onClick={() => {
+                          setWallViewFace('north');
+                          setCameraToWallPlane(selectedRoom.id, 'north');
+                        }}
+                      >
+                        Северная
+                      </button>
+                      <button
+                        type="button"
+                        className={wallViewFace === 'south' ? 'wall-view-option active' : 'wall-view-option'}
+                        onClick={() => {
+                          setWallViewFace('south');
+                          setCameraToWallPlane(selectedRoom.id, 'south');
+                        }}
+                      >
+                        Южная
+                      </button>
+                      <button
+                        type="button"
+                        className={wallViewFace === 'west' ? 'wall-view-option active' : 'wall-view-option'}
+                        onClick={() => {
+                          setWallViewFace('west');
+                          setCameraToWallPlane(selectedRoom.id, 'west');
+                        }}
+                      >
+                        Западная
+                      </button>
+                      <button
+                        type="button"
+                        className={wallViewFace === 'east' ? 'wall-view-option active' : 'wall-view-option'}
+                        onClick={() => {
+                          setWallViewFace('east');
+                          setCameraToWallPlane(selectedRoom.id, 'east');
+                        }}
+                      >
+                        Восточная
+                      </button>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className="btn-secondary"
