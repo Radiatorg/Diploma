@@ -81,6 +81,9 @@ const FloorPlan3D = () => {
   const [roomWidthCm, setRoomWidthCm] = useState(null);
   const [roomLengthCm, setRoomLengthCm] = useState(null);
   const [roomCeilingHeightM, setRoomCeilingHeightM] = useState(DEFAULT_ROOM_HEIGHT_M);
+  const [roomHeightById, setRoomHeightById] = useState({});
+  const [lastEditedRoomSide, setLastEditedRoomSide] = useState('width');
+  const [savingRoomGeometry, setSavingRoomGeometry] = useState(false);
   const [doorWidthCm, setDoorWidthCm] = useState(90);
   const [windowWidthCm, setWindowWidthCm] = useState(120);
   const [stats, setStats] = useState({
@@ -97,6 +100,7 @@ const FloorPlan3D = () => {
   const ORTHOGONAL_TOLERANCE_M = 0.01;
   const WALL_INSET_M = 0.03;
   const ROOM_HEIGHT_M = DEFAULT_ROOM_HEIGHT_M;
+  const activeRoomHeightM = selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M;
   const MAX_HISTORY_SIZE = 40;
 
   const getRoomBounds = useCallback((room, walls = sceneData.walls) => {
@@ -228,17 +232,18 @@ const FloorPlan3D = () => {
     sceneData.rooms.forEach((room) => {
       const bounds = getRoomBounds(room, sceneData.walls);
       if (!bounds) return;
+      const roomHeightM = roomHeightById[room.id] || (room.id === selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M);
       const width = Math.max(bounds.maxX - bounds.minX, 0.2);
       const depth = Math.max(bounds.maxZ - bounds.minZ, 0.2);
       const roomMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(width, ROOM_HEIGHT_M, depth),
+        new THREE.BoxGeometry(width, roomHeightM, depth),
         new THREE.MeshStandardMaterial({
           color: selectedRoomId === room.id ? 0x0ea5e9 : 0x334155,
           transparent: true,
           opacity: selectedRoomId === room.id ? 0.17 : 0.08,
         })
       );
-      roomMesh.position.set(bounds.minX + width / 2, ROOM_HEIGHT_M / 2, bounds.minZ + depth / 2);
+      roomMesh.position.set(bounds.minX + width / 2, roomHeightM / 2, bounds.minZ + depth / 2);
       wallsGroupRef.current.add(roomMesh);
 
       if (selectedRoomId === room.id) {
@@ -265,36 +270,36 @@ const FloorPlan3D = () => {
           })
         );
         ceilingOverlay.rotation.x = Math.PI / 2;
-        ceilingOverlay.position.set(bounds.minX + width / 2, ROOM_HEIGHT_M - 0.01, bounds.minZ + depth / 2);
+        ceilingOverlay.position.set(bounds.minX + width / 2, roomHeightM - 0.01, bounds.minZ + depth / 2);
         wallsGroupRef.current.add(ceilingOverlay);
 
         const wallPlanes = [
           {
             key: 'north',
             color: hoveredWallFace === 'north' ? 0xf59e0b : (wallFaceMode === 'north' || wallFaceMode === 'auto' ? 0x60a5fa : 0x475569),
-            pos: [(bounds.minX + bounds.maxX) / 2, ROOM_HEIGHT_M / 2, bounds.minZ + WALL_INSET_M],
-            size: [width, ROOM_HEIGHT_M],
+            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.minZ + WALL_INSET_M],
+            size: [width, roomHeightM],
             rotY: Math.PI,
           },
           {
             key: 'south',
             color: hoveredWallFace === 'south' ? 0xf59e0b : (wallFaceMode === 'south' || wallFaceMode === 'auto' ? 0x818cf8 : 0x475569),
-            pos: [(bounds.minX + bounds.maxX) / 2, ROOM_HEIGHT_M / 2, bounds.maxZ - WALL_INSET_M],
-            size: [width, ROOM_HEIGHT_M],
+            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.maxZ - WALL_INSET_M],
+            size: [width, roomHeightM],
             rotY: 0,
           },
           {
             key: 'west',
             color: hoveredWallFace === 'west' ? 0xf59e0b : (wallFaceMode === 'west' || wallFaceMode === 'auto' ? 0x38bdf8 : 0x475569),
-            pos: [bounds.minX + WALL_INSET_M, ROOM_HEIGHT_M / 2, (bounds.minZ + bounds.maxZ) / 2],
-            size: [depth, ROOM_HEIGHT_M],
+            pos: [bounds.minX + WALL_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
+            size: [depth, roomHeightM],
             rotY: Math.PI / 2,
           },
           {
             key: 'east',
             color: hoveredWallFace === 'east' ? 0xf59e0b : (wallFaceMode === 'east' || wallFaceMode === 'auto' ? 0x0ea5e9 : 0x475569),
-            pos: [bounds.maxX - WALL_INSET_M, ROOM_HEIGHT_M / 2, (bounds.minZ + bounds.maxZ) / 2],
-            size: [depth, ROOM_HEIGHT_M],
+            pos: [bounds.maxX - WALL_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
+            size: [depth, roomHeightM],
             rotY: -Math.PI / 2,
           },
         ];
@@ -373,7 +378,7 @@ const FloorPlan3D = () => {
         // ignore malformed route json
       }
     });
-  }, [ROOM_HEIGHT_M, WALL_INSET_M, getRoomBounds, hoveredWallFace, sceneData, selectedRoomId, surfaceMode, wallFaceMode]);
+  }, [ROOM_HEIGHT_M, WALL_INSET_M, getRoomBounds, hoveredWallFace, roomCeilingHeightM, roomHeightById, sceneData, selectedRoomId, surfaceMode, wallFaceMode]);
 
   const loadSceneData = useCallback(async () => {
     try {
@@ -700,7 +705,7 @@ const FloorPlan3D = () => {
 
   const getWallSnapPointFromBounds = useCallback((point, bounds, heightM) => {
     if (!point || !bounds) return point;
-    const y = Math.min(Math.max(heightM, 0.05), ROOM_HEIGHT_M - 0.02);
+    const y = Math.min(Math.max(heightM, 0.05), activeRoomHeightM - 0.02);
     const laneOffset = toMeters(parallelOffsetCm);
     const clampedX = Math.min(Math.max(point.x, bounds.minX + WALL_INSET_M), bounds.maxX - WALL_INSET_M);
     const clampedZ = Math.min(Math.max(point.z, bounds.minZ + WALL_INSET_M), bounds.maxZ - WALL_INSET_M);
@@ -729,7 +734,7 @@ const FloorPlan3D = () => {
       }
     });
     return nearest;
-  }, [ROOM_HEIGHT_M, WALL_INSET_M, parallelOffsetCm, toMeters, wallFaceMode]);
+  }, [WALL_INSET_M, activeRoomHeightM, parallelOffsetCm, toMeters, wallFaceMode]);
 
   const selectedRoom = useMemo(
     () => sceneData.rooms.find((room) => room.id === selectedRoomId) || null,
@@ -749,10 +754,10 @@ const FloorPlan3D = () => {
       return new THREE.Vector3(clampedX, 0.05, clampedZ);
     }
     if (surfaceMode === 'ceiling') {
-      return new THREE.Vector3(clampedX, ROOM_HEIGHT_M - 0.05, clampedZ);
+      return new THREE.Vector3(clampedX, activeRoomHeightM - 0.05, clampedZ);
     }
     return getWallSnapPointFromBounds(new THREE.Vector3(clampedX, 0, clampedZ), selectedRoomBounds, Math.max(toMeters(preferredHeightCm), 0.05));
-  }, [ROOM_HEIGHT_M, WALL_INSET_M, getWallSnapPointFromBounds, pointHeight, selectedRoomBounds, surfaceMode, toMeters]);
+  }, [WALL_INSET_M, activeRoomHeightM, getWallSnapPointFromBounds, pointHeight, selectedRoomBounds, surfaceMode, toMeters]);
 
   const selectedRoomPoints = useMemo(
     () => (selectedRoomId ? sceneData.points.filter((point) => point.roomId === selectedRoomId) : []),
@@ -1039,9 +1044,9 @@ const FloorPlan3D = () => {
           }
         }
       } else if (surfaceMode === 'ceiling') {
-        const ceilingHit = getIntersectionOnHeight(event, ROOM_HEIGHT_M - 0.05);
+        const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
         if (ceilingHit && isPointInsideBounds(ceilingHit, selectedRoomBounds)) {
-          contextPoint = new THREE.Vector3(ceilingHit.x, ROOM_HEIGHT_M - 0.05, ceilingHit.z);
+          contextPoint = new THREE.Vector3(ceilingHit.x, activeRoomHeightM - 0.05, ceilingHit.z);
           surfaceLabel = 'Потолок';
         }
       } else {
@@ -1108,15 +1113,16 @@ const FloorPlan3D = () => {
   const focusRoom = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
+    const viewHeightM = roomHeightById[roomId] || ROOM_HEIGHT_M;
     setSelectedRoomId(roomId);
     if (!bounds || !cameraRef.current || !controlsRef.current) return;
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2;
-    controlsRef.current.target.set(centerX, ROOM_HEIGHT_M / 3, centerZ);
-    cameraRef.current.position.set(centerX + 3.6, ROOM_HEIGHT_M + 2.8, centerZ + 3.6);
+    controlsRef.current.target.set(centerX, viewHeightM / 3, centerZ);
+    cameraRef.current.position.set(centerX + 3.6, viewHeightM + 2.8, centerZ + 3.6);
     controlsRef.current.update();
     setInsideRoomView(false);
-  }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls]);
+  }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
 
   const enterRoom = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
@@ -1135,30 +1141,32 @@ const FloorPlan3D = () => {
   const setCameraToFloorPlane = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
+    const viewHeightM = roomHeightById[roomId] || ROOM_HEIGHT_M;
     setSelectedRoomId(roomId);
     if (!bounds || !cameraRef.current || !controlsRef.current) return;
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2;
     controlsRef.current.target.set(centerX, 0, centerZ);
-    cameraRef.current.position.set(centerX, ROOM_HEIGHT_M + 3, centerZ + 0.01);
+    cameraRef.current.position.set(centerX, viewHeightM + 3, centerZ + 0.01);
     controlsRef.current.update();
     setInsideRoomView(false);
     setSurfaceMode('floor');
     setRoutePlacementMode('floor');
     setRouteHeight((prev) => (prev || 10));
-  }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls]);
+  }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
 
   const setCameraToWallPlane = useCallback((roomId, face = wallViewFace) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
+    const viewHeightM = roomHeightById[roomId] || ROOM_HEIGHT_M;
     setSelectedRoomId(roomId);
     if (!bounds || !cameraRef.current || !controlsRef.current) return;
 
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2;
     const inwardPadding = 0.16;
-    const eyeHeight = Math.min(Math.max(1.65, ROOM_HEIGHT_M * 0.58), ROOM_HEIGHT_M - 0.35);
-    const targetHeight = Math.min(Math.max(1.45, ROOM_HEIGHT_M * 0.5), ROOM_HEIGHT_M - 0.45);
+    const eyeHeight = Math.min(Math.max(1.65, viewHeightM * 0.58), viewHeightM - 0.35);
+    const targetHeight = Math.min(Math.max(1.45, viewHeightM * 0.5), viewHeightM - 0.45);
 
     let cameraX = centerX;
     let cameraZ = centerZ;
@@ -1190,23 +1198,24 @@ const FloorPlan3D = () => {
     setRoutePlacementMode('wall');
     setRouteHeight((prev) => (prev || 120));
     setWallFaceMode(face === 'auto' ? 'auto' : face);
-  }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls, wallViewFace]);
+  }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls, wallViewFace]);
 
   const setCameraToCeilingPlane = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
+    const viewHeightM = roomHeightById[roomId] || ROOM_HEIGHT_M;
     setSelectedRoomId(roomId);
     if (!bounds || !cameraRef.current || !controlsRef.current) return;
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerZ = (bounds.minZ + bounds.maxZ) / 2;
-    controlsRef.current.target.set(centerX, ROOM_HEIGHT_M - 0.2, centerZ);
-    cameraRef.current.position.set(centerX + 0.01, ROOM_HEIGHT_M + 1.2, centerZ + 0.6);
+    controlsRef.current.target.set(centerX, viewHeightM - 0.2, centerZ);
+    cameraRef.current.position.set(centerX + 0.01, viewHeightM + 1.2, centerZ + 0.6);
     controlsRef.current.update();
     setInsideRoomView(false);
     setSurfaceMode('ceiling');
     setRoutePlacementMode('ceiling');
     setRouteHeight((prev) => (prev || 260));
-  }, [ROOM_HEIGHT_M, getRoomBounds, sceneData.rooms, sceneData.walls]);
+  }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
 
   useEffect(() => {
     if (!controlsRef.current) return;
@@ -1309,8 +1318,8 @@ const FloorPlan3D = () => {
     }
     setRoomWidthCm(widthFromRoom || defaultSideCm);
     setRoomLengthCm(heightFromRoom || defaultSideCm);
-    setRoomCeilingHeightM(DEFAULT_ROOM_HEIGHT_M);
-  }, [selectedRoom]);
+    setRoomCeilingHeightM(roomHeightById[selectedRoom.id] || DEFAULT_ROOM_HEIGHT_M);
+  }, [roomHeightById, selectedRoom]);
 
   const roomPlan = roomPlanData[selectedRoomId] || { plannedOutlets: 0, plannedSwitches: 0, plannedLights: 0, cableReserveM: 0 };
   const getRoomName = useCallback((roomId) => (
@@ -1364,13 +1373,13 @@ const FloorPlan3D = () => {
     };
   }, [isWetRoom, pointHeight, selectedCircuit, selectedRoom, selectedRoomId, tool]);
 
-  const autoPlaceSelectedRoom = useCallback(async () => {
+  const autoPlaceSelectedRoom = useCallback(async (forcedWidthCm = null, forcedLengthCm = null) => {
     if (!selectedRoom || !sceneData.floorPlan) {
       return;
     }
     try {
-      let widthCm = Number(roomWidthCm || 0);
-      let heightCm = Number(roomLengthCm || 0);
+      let widthCm = Number(forcedWidthCm || roomWidthCm || 0);
+      let heightCm = Number(forcedLengthCm || roomLengthCm || 0);
       const areaM2 = Number(selectedRoom.area || 0);
       if ((!widthCm || !heightCm) && areaM2 > 0) {
         if (!widthCm && heightCm) {
@@ -1448,6 +1457,49 @@ const FloorPlan3D = () => {
       setError('Не удалось автоматически разместить комнату на плане');
     }
   }, [loadSceneData, projectId, roomCeilingHeightM, sceneData.floorPlan, selectedRoom, toMeters, roomLengthCm, roomWidthCm]);
+
+  const saveSelectedRoomGeometry = useCallback(async () => {
+    if (!selectedRoom || !sceneData.floorPlan) return;
+    try {
+      setSavingRoomGeometry(true);
+      setError('');
+      const areaM2 = Number(selectedRoom.area || 0);
+      let widthCm = Number(roomWidthCm || 0);
+      let lengthCm = Number(roomLengthCm || 0);
+
+      if (areaM2 > 0) {
+        if (lastEditedRoomSide === 'width' && widthCm > 0) {
+          lengthCm = (areaM2 * 10000) / widthCm;
+        } else if (lastEditedRoomSide === 'length' && lengthCm > 0) {
+          widthCm = (areaM2 * 10000) / lengthCm;
+        } else if (widthCm > 0 && !lengthCm) {
+          lengthCm = (areaM2 * 10000) / widthCm;
+        } else if (lengthCm > 0 && !widthCm) {
+          widthCm = (areaM2 * 10000) / lengthCm;
+        }
+      }
+
+      if (!widthCm || !lengthCm || widthCm < 50 || lengthCm < 50) {
+        setError('Ширина и длина комнаты должны быть заданы и быть не меньше 0.5 м.');
+        return;
+      }
+
+      const normalizedWidthCm = Number(widthCm.toFixed(2));
+      const normalizedLengthCm = Number(lengthCm.toFixed(2));
+      await roomAPI.update(projectId, selectedRoom.id, {
+        width: normalizedWidthCm,
+        height: normalizedLengthCm,
+      });
+      setRoomWidthCm(normalizedWidthCm);
+      setRoomLengthCm(normalizedLengthCm);
+      await autoPlaceSelectedRoom(normalizedWidthCm, normalizedLengthCm);
+      setError('');
+    } catch (e) {
+      setError(e?.response?.data?.message || 'Не удалось сохранить геометрию комнаты');
+    } finally {
+      setSavingRoomGeometry(false);
+    }
+  }, [autoPlaceSelectedRoom, lastEditedRoomSide, projectId, roomLengthCm, roomWidthCm, sceneData.floorPlan, selectedRoom]);
 
   useEffect(() => {
     if (selectedRoom && !selectedRoomHasGeometry) {
@@ -1842,6 +1894,7 @@ const FloorPlan3D = () => {
                     value={roomWidthCm != null ? (roomWidthCm / 100).toFixed(2) : ''}
                     onChange={(e) => {
                       const val = Number(e.target.value || 0);
+                      setLastEditedRoomSide('width');
                       if (!val) {
                         setRoomWidthCm(null);
                         return;
@@ -1849,7 +1902,7 @@ const FloorPlan3D = () => {
                       const cm = val * 100;
                       setRoomWidthCm(cm);
                       const areaM2 = Number(selectedRoom.area || 0);
-                      if (areaM2 > 0 && (!roomLengthCm || roomLengthCm <= 0)) {
+                      if (areaM2 > 0) {
                         const otherCm = (areaM2 * 10000) / cm;
                         setRoomLengthCm(otherCm);
                       }
@@ -1867,6 +1920,7 @@ const FloorPlan3D = () => {
                     value={roomLengthCm != null ? (roomLengthCm / 100).toFixed(2) : ''}
                     onChange={(e) => {
                       const val = Number(e.target.value || 0);
+                      setLastEditedRoomSide('length');
                       if (!val) {
                         setRoomLengthCm(null);
                         return;
@@ -1874,7 +1928,7 @@ const FloorPlan3D = () => {
                       const cm = val * 100;
                       setRoomLengthCm(cm);
                       const areaM2 = Number(selectedRoom.area || 0);
-                      if (areaM2 > 0 && (!roomWidthCm || roomWidthCm <= 0)) {
+                      if (areaM2 > 0) {
                         const otherCm = (areaM2 * 10000) / cm;
                         setRoomWidthCm(otherCm);
                       }
@@ -1892,10 +1946,22 @@ const FloorPlan3D = () => {
                     value={roomCeilingHeightM.toFixed(2)}
                     onChange={(e) => {
                       const val = Number(e.target.value || ROOM_HEIGHT_M);
-                      setRoomCeilingHeightM(val > 0 ? val : ROOM_HEIGHT_M);
+                      const nextHeight = val > 0 ? val : ROOM_HEIGHT_M;
+                      setRoomCeilingHeightM(nextHeight);
+                      if (selectedRoomId) {
+                        setRoomHeightById((prev) => ({ ...prev, [selectedRoomId]: nextHeight }));
+                      }
                     }}
                   />
                 </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={saveSelectedRoomGeometry}
+                  disabled={savingRoomGeometry}
+                >
+                  {savingRoomGeometry ? 'Сохранение...' : 'Сохранить геометрию комнаты'}
+                </button>
               </div>
               <div className="room-plan-panel">
                 <h3>Сохранения 3D расчетов</h3>
