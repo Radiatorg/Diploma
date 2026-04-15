@@ -9,7 +9,7 @@
 
 .chat-widget-toggle {
   position: fixed !important;
-  bottom: 120px !important;
+  bottom: calc(120px + var(--chat-footer-offset, 0px)) !important;
   right: 30px !important;
   left: auto !important;
   width: 60px;
@@ -24,7 +24,8 @@
   box-shadow: 
     8px 8px 16px var(--neomorph-shadow-dark),
     -8px -8px 16px var(--neomorph-shadow-light);
-  transition: all 0.3s;
+  transition: box-shadow 0.3s, transform 0.3s;
+  transform: translate(var(--chat-drag-x, 0px), var(--chat-drag-y, 0px));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -34,7 +35,7 @@
 }
 
 .chat-widget-toggle:hover {
-  transform: translateY(-3px);
+  transform: translate(var(--chat-drag-x, 0px), calc(var(--chat-drag-y, 0px) - 3px));
   box-shadow: 
     inset 4px 4px 8px rgba(0, 0, 0, 0.2),
     inset -4px -4px 8px rgba(255, 255, 255, 0.1),
@@ -47,7 +48,7 @@
 
 .chat-widget-container {
   position: fixed !important;
-  bottom: 190px !important;
+  bottom: calc(190px + var(--chat-footer-offset, 0px)) !important;
   right: 30px !important;
   left: auto !important;
   width: 450px;
@@ -64,6 +65,7 @@
   z-index: 1001;
   overflow: hidden;
   box-sizing: border-box;
+  transform: translate(var(--chat-drag-x, 0px), var(--chat-drag-y, 0px));
 }
 
 .chat-widget-header {
@@ -76,6 +78,16 @@
   box-shadow: 
     0 4px 8px var(--neomorph-shadow-dark),
     inset 0 -1px 0 rgba(184, 188, 194, 0.3);
+}
+
+.chat-widget-header--draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.chat-widget-toggle:active,
+.chat-widget-header--draggable:active {
+  cursor: grabbing;
 }
 
 .chat-widget-header h3 {
@@ -443,14 +455,14 @@
     height: calc(100vh - 250px) !important;
     right: 10px !important;
     left: auto !important;
-    bottom: 190px !important;
+    bottom: calc(190px + var(--chat-footer-offset, 0px)) !important;
     max-height: calc(100vh - 250px);
   }
   
   .chat-widget-toggle {
     right: 10px !important;
     left: auto !important;
-    bottom: 120px !important;
+    bottom: calc(120px + var(--chat-footer-offset, 0px)) !important;
   }
 }
 

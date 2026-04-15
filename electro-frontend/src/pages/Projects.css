@@ -114,11 +114,11 @@
 }
 
 .btn-create-project {
-  background: linear-gradient(135deg, var(--neomorph-accent) 0%, #4a5fc7 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
 }
 
 .btn-create-project-calculator {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
 }
 
 .btn-create-project:hover,
@@ -127,6 +127,55 @@
     inset 4px 4px 8px rgba(0, 0, 0, 0.2),
     inset -4px -4px 8px rgba(255, 255, 255, 0.1);
   transform: translateY(1px);
+}
+
+/* Локальная палитра кнопок для страницы расчётов */
+.projects-page .btn-secondary,
+.projects-page .btn-calculator,
+.projects-page .btn-danger {
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.projects-page .btn-secondary {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  box-shadow: 0 3px 8px rgba(67, 56, 202, 0.25);
+}
+
+.projects-page .btn-calculator {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  box-shadow: 0 3px 8px rgba(14, 116, 144, 0.28);
+}
+
+.projects-page .btn-danger {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 3px 8px rgba(185, 28, 28, 0.28);
+}
+
+.projects-page .btn-secondary:hover:not(:disabled),
+.projects-page .btn-calculator:hover:not(:disabled),
+.projects-page .btn-danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.projects-page .btn-secondary:active:not(:disabled),
+.projects-page .btn-calculator:active:not(:disabled),
+.projects-page .btn-danger:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.projects-page .btn-secondary:focus-visible,
+.projects-page .btn-calculator:focus-visible,
+.projects-page .btn-danger:focus-visible,
+.btn-create-project:focus-visible,
+.btn-create-project-calculator:focus-visible {
+  outline: 2px solid rgba(67, 56, 202, 0.45);
+  outline-offset: 2px;
 }
 
 .btn-icon {
@@ -346,15 +395,15 @@
   justify-content: center;
   gap: 0.5rem;
   text-decoration: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 3px 8px rgba(14, 116, 144, 0.28);
   box-sizing: border-box;
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
   color: white;
 }
 
 .btn-calculator:hover:not(:disabled) {
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
+  box-shadow: 0 4px 10px rgba(14, 116, 144, 0.35);
   transform: translateY(-1px);
 }
 

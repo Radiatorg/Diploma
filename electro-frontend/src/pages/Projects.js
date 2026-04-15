@@ -150,7 +150,7 @@ const Projects = () => {
             </button>
           </div>
           <Link to="/calculator" className="btn-create-project-calculator">
-            <span className="btn-icon">⚡</span>
+            <span className="btn-icon">🧮</span>
             Создать через калькулятор
           </Link>
         <Link to="/projects/new" className="btn-create-project">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { fileAPI, chatAPI } from '../../api/api';
 import Modal from '../UI/Modal';
@@ -15,10 +15,21 @@ const ChatWidget = () => {
   const [stompClient, setStompClient] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // ID сообщения, на которое отвечаем
+  const [footerOffset, setFooterOffset] = useState(0);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const [alertModal, setAlertModal] = useState({ show: false, message: '' });
   const [selectedImage, setSelectedImage] = useState(null); // URL изображения для модального окна
+  const dragStateRef = useRef({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0
+  });
+  const wasDraggedRef = useRef(false);
+  const suppressToggleClickRef = useRef(false);
 
   useEffect(() => {
     if (!isDesigner() && !isAdmin()) return;
@@ -129,6 +140,33 @@ const ChatWidget = () => {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    const calculateFooterOffset = () => {
+      const footer = document.querySelector('.footer');
+      if (!footer) {
+        setFooterOffset(0);
+        return;
+      }
+
+      const footerRect = footer.getBoundingClientRect();
+      const overlap = Math.max(0, window.innerHeight - footerRect.top);
+      setFooterOffset(Math.ceil(overlap));
+    };
+
+    const layoutWrapper = document.querySelector('.layout-wrapper');
+
+    calculateFooterOffset();
+    window.addEventListener('resize', calculateFooterOffset, { passive: true });
+    window.addEventListener('scroll', calculateFooterOffset, { passive: true });
+    layoutWrapper?.addEventListener('scroll', calculateFooterOffset, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', calculateFooterOffset);
+      window.removeEventListener('scroll', calculateFooterOffset);
+      layoutWrapper?.removeEventListener('scroll', calculateFooterOffset);
+    };
+  }, []);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -173,6 +211,57 @@ const ChatWidget = () => {
       console.error('Error loading messages:', error);
     }
   };
+
+  const handleDragMove = useCallback((e) => {
+    if (!dragStateRef.current.isDragging) return;
+
+    const dx = e.clientX - dragStateRef.current.startX;
+    const dy = e.clientY - dragStateRef.current.startY;
+
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      wasDraggedRef.current = true;
+    }
+
+    setDragOffset({
+      x: dragStateRef.current.startOffsetX + dx,
+      y: dragStateRef.current.startOffsetY + dy
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (!dragStateRef.current.isDragging) return;
+
+    dragStateRef.current.isDragging = false;
+    window.removeEventListener('mousemove', handleDragMove);
+    window.removeEventListener('mouseup', handleDragEnd);
+
+    if (wasDraggedRef.current) {
+      suppressToggleClickRef.current = true;
+    }
+  }, [handleDragMove]);
+
+  const startDrag = (e) => {
+    e.preventDefault();
+
+    dragStateRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startOffsetX: dragOffset.x,
+      startOffsetY: dragOffset.y
+    };
+
+    wasDraggedRef.current = false;
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+  };
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [handleDragMove, handleDragEnd]);
 
   const sendMessage = async (replyToId = null) => {
     const messageToSend = replyToId ? newMessage : newMessage.trim();
@@ -299,7 +388,18 @@ const ChatWidget = () => {
     <>
       <button 
         className={`chat-widget-toggle ${isOpen ? 'open' : ''}`}
+        style={{
+          '--chat-footer-offset': `${footerOffset}px`,
+          '--chat-drag-x': `${dragOffset.x}px`,
+          '--chat-drag-y': `${dragOffset.y}px`
+        }}
+        onMouseDown={startDrag}
         onClick={() => {
+          if (suppressToggleClickRef.current) {
+            suppressToggleClickRef.current = false;
+            return;
+          }
+
           if (isOpen) {
             setIsOpen(false);
           } else {
@@ -313,8 +413,15 @@ const ChatWidget = () => {
       </button>
 
       {isOpen && (
-        <div className="chat-widget-container">
-          <div className="chat-widget-header">
+        <div
+          className="chat-widget-container"
+          style={{
+            '--chat-footer-offset': `${footerOffset}px`,
+            '--chat-drag-x': `${dragOffset.x}px`,
+            '--chat-drag-y': `${dragOffset.y}px`
+          }}
+        >
+          <div className="chat-widget-header chat-widget-header--draggable" onMouseDown={startDrag}>
             <h3>Чат поддержки</h3>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <button 
@@ -453,7 +560,7 @@ const ChatWidget = () => {
                 disabled={uploadingImage}
                 title="Отправить изображение"
               >
-                {uploadingImage ? '...' : 'Изобр.'}
+                {uploadingImage ? '...' : '📷'}
               </button>
               <input
                 type="text"
