@@ -124,7 +124,7 @@ public class TestDataInitializer implements CommandLineRunner {
             User designer = User.builder()
                     .username("designer")
                     .email("designer@electro.local")
-                    .password(passwordEncoder.encode("designer123"))
+                    .password(passwordEncoder.encode("А"))
                     .firstName("Иван")
                     .lastName("Петров")
                     .phoneNumber("+375291234567")

@@ -39,7 +39,7 @@ public class CableRun {
     @Column(name = "installation_scope", nullable = false, length = 20)
     private InstallationScope installationScope = InstallationScope.PLANNED;
 
-    @Column(name = "path_json", length = 4000)
+    @Column(name = "path_json", columnDefinition = "TEXT")
     private String pathJson;
 
     @Column(length = 255)

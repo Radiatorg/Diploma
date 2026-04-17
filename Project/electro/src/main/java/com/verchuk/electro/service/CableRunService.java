@@ -67,6 +67,7 @@ public class CableRunService {
     private static final BigDecimal ENDPOINT_SNAP_TOLERANCE_CM = BigDecimal.valueOf(35);
     private static final BigDecimal OPENING_LINE_TOLERANCE_CM = BigDecimal.valueOf(2);
 
+    @Transactional(readOnly = true)
     public List<CableRunResponse> getCableRuns(Long projectId) {
         ensureProjectAccess(projectId);
         return cableRunRepository.findByProjectIdOrderByIdAsc(projectId).stream()
@@ -176,8 +177,8 @@ public class CableRunService {
             pointsById.put(point.getId(), point);
         }
 
-        BigDecimal maxX = floorPlan.getWidth();
-        BigDecimal maxY = floorPlan.getHeight();
+        BigDecimal effectiveMaxX = floorPlan.getWidth().multiply(BigDecimal.valueOf(1.5));
+        BigDecimal effectiveMaxY = floorPlan.getHeight().multiply(BigDecimal.valueOf(1.5));
         List<PointCm> nodes = new ArrayList<>();
         for (JsonNode node : root) {
             JsonNode xNode = node.get("x");
@@ -210,8 +211,8 @@ public class CableRunService {
                 }
             }
             if (x.compareTo(BigDecimal.ZERO) < 0 || y.compareTo(BigDecimal.ZERO) < 0
-                    || x.compareTo(maxX) > 0 || y.compareTo(maxY) > 0) {
-                throw new BadRequestException("Точка трассы выходит за границы плана.");
+                    || x.compareTo(effectiveMaxX) > 0 || y.compareTo(effectiveMaxY) > 0) {
+                throw new BadRequestException("Точка трассы выходит за допустимые границы плана.");
             }
             nodes.add(new PointCm(x, y, z, pointId));
         }

@@ -10,7 +10,7 @@ import java.util.Optional;
 
 @Repository
 public interface CableRunRepository extends JpaRepository<CableRun, Long> {
-    @EntityGraph(attributePaths = {"cableType"})
+    @EntityGraph(attributePaths = {"cableType", "circuit", "project"})
     List<CableRun> findByProjectIdOrderByIdAsc(Long projectId);
     Optional<CableRun> findByIdAndProjectId(Long id, Long projectId);
 }

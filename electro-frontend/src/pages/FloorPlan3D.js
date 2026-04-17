@@ -32,6 +32,8 @@ const FloorPlan3D = () => {
   const wallHoverMeshesRef = useRef([]);
   const pointHoverMeshesRef = useRef([]);
   const routeHoverLinesRef = useRef([]);
+  const routeHitMeshesRef = useRef([]);
+  const hoveredRouteLineRef = useRef(null);
   const openingHoverMeshesRef = useRef([]);
   const routePointsRef = useRef([]);
   const routeNodesRef = useRef([]);
@@ -248,6 +250,7 @@ const FloorPlan3D = () => {
     wallHoverMeshesRef.current = [];
     pointHoverMeshesRef.current = [];
     routeHoverLinesRef.current = [];
+    routeHitMeshesRef.current = [];
     openingHoverMeshesRef.current = [];
 
     const floorWidthM = toMeters(sceneData.floorPlan.width);
@@ -434,9 +437,6 @@ const FloorPlan3D = () => {
       }
     });
 
-    const activeRoomForFilter = selectedRoomId ? sceneData.rooms.find((r) => r.id === selectedRoomId) : null;
-    const activeBoundsForFilter = activeRoomForFilter ? getRoomBounds(activeRoomForFilter, sceneData.walls) : null;
-
     sceneData.points.forEach((point) => {
       if (selectedRoomId && point.roomId !== selectedRoomId) return;
       const x = toMeters(point.positionX);
@@ -454,32 +454,55 @@ const FloorPlan3D = () => {
 
     sceneData.routes.forEach((route) => {
       if (!route.pathJson) return;
-      if (selectedRoomId && activeBoundsForFilter) {
-        try {
-          const firstNode = JSON.parse(route.pathJson)[0];
-          if (firstNode) {
-            const ptX = toMeters(firstNode.x);
-            const ptZ = toMeters(firstNode.y);
-            const inside = ptX >= activeBoundsForFilter.minX - 0.15
-              && ptX <= activeBoundsForFilter.maxX + 0.15
-              && ptZ >= activeBoundsForFilter.minZ - 0.15
-              && ptZ <= activeBoundsForFilter.maxZ + 0.15;
-            if (!inside) return;
-          }
-        } catch (e) {
-          return;
-        }
-      }
       try {
         const path = JSON.parse(route.pathJson);
         if (!Array.isArray(path) || path.length < 2) return;
         const points3D = path.map((node) => new THREE.Vector3(toMeters(node.x), toMeters(node.z || 0), toMeters(node.y)));
         const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-        const material = new THREE.LineBasicMaterial({ color: 0xf43f5e, linewidth: 2 });
+        const material = new THREE.LineBasicMaterial({
+          color: 0xf43f5e,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.95,
+        });
         const line = new THREE.Line(geometry, material);
+        line.renderOrder = 10;
         line.userData = { routeData: route };
         routesGroupRef.current.add(line);
         routeHoverLinesRef.current.push(line);
+
+        points3D.forEach((pt) => {
+          const nodeGeo = new THREE.SphereGeometry(0.05, 10, 10);
+          const nodeMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, depthTest: false, depthWrite: false, transparent: true });
+          const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
+          nodeMesh.renderOrder = 11;
+          nodeMesh.position.copy(pt);
+          routesGroupRef.current.add(nodeMesh);
+        });
+
+        // Invisible cylinder meshes per segment for reliable raycasting
+        const upAxis = new THREE.Vector3(0, 1, 0);
+        for (let si = 0; si < points3D.length - 1; si += 1) {
+          const segA = points3D[si];
+          const segB = points3D[si + 1];
+          const segVec = new THREE.Vector3().subVectors(segB, segA);
+          const segLen = segVec.length();
+          if (segLen < 0.001) continue; // eslint-disable-line no-continue
+          const segDir = segVec.clone().normalize();
+          const hitGeo = new THREE.CylinderGeometry(0.18, 0.18, segLen, 6);
+          const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+          const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+          hitMesh.position.lerpVectors(segA, segB, 0.5);
+          if (Math.abs(segDir.dot(upAxis) + 1) < 0.001) {
+            hitMesh.rotation.z = Math.PI;
+          } else {
+            hitMesh.quaternion.setFromUnitVectors(upAxis, segDir);
+          }
+          hitMesh.userData = { routeData: route, routeLineId: route.id };
+          routesGroupRef.current.add(hitMesh);
+          routeHitMeshesRef.current.push(hitMesh);
+        }
       } catch (e) {
         // ignore malformed route json
       }
@@ -500,16 +523,23 @@ const FloorPlan3D = () => {
         throw new Error('План проекта не найден');
       }
 
+      let routeLoadError = null;
       const [roomsRes, wallsRes, pointsRes, routesRes, circuitsRes, appliancesRes, reportRes, savedRes] = await Promise.all([
         roomAPI.getByProject(projectId).catch(() => ({ data: [] })),
         wallAPI.getByProject(projectId).catch(() => ({ data: [] })),
         electricalPointAPI.getByProject(projectId).catch(() => ({ data: [] })),
-        cableRunAPI.getByProject(projectId).catch(() => ({ data: [] })),
+        cableRunAPI.getByProject(projectId).catch((e) => {
+          routeLoadError = e?.response?.data?.message || 'Не удалось загрузить трассы кабеля';
+          return { data: [] };
+        }),
         circuitAPI.getByProject(projectId).catch(() => ({ data: [] })),
         projectApplianceAPI.getByProject(projectId).catch(() => ({ data: [] })),
         calculationAPI.getReport(projectId).catch(() => ({ data: null })),
         savedSpecificationAPI.getAll(projectId).catch(() => ({ data: [] })),
       ]);
+      if (routeLoadError) {
+        setError(routeLoadError);
+      }
 
       const nextSceneData = {
         floorPlan: floorPlanRes.data,
@@ -617,10 +647,6 @@ const FloorPlan3D = () => {
       controlsRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    redrawScene();
-  }, [redrawScene]);
 
   useEffect(() => {
     if (pointsGroupRef.current) pointsGroupRef.current.visible = true;
@@ -780,6 +806,12 @@ const FloorPlan3D = () => {
     });
   }, []);
 
+  useEffect(() => {
+    redrawScene();
+    // Keep in-progress route visible after scene redraws (surface/camera mode changes).
+    redrawRouteDraft();
+  }, [redrawRouteDraft, redrawScene]);
+
   const findNearestExistingPoint = (candidate, pointsForSnap = sceneData.points) => {
     let nearest = null;
     let minDistance = Number.POSITIVE_INFINITY;
@@ -879,7 +911,7 @@ const FloorPlan3D = () => {
     if (forward.lengthSq() < 1e-6) return false;
     forward.normalize();
 
-    const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
+    const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
     const delta = new THREE.Vector3();
     if (direction === 'forward') delta.copy(forward).multiplyScalar(step);
     if (direction === 'backward') delta.copy(forward).multiplyScalar(-step);
@@ -1064,7 +1096,7 @@ const FloorPlan3D = () => {
       routesGroupRef.current.add(badLine);
     }
 
-    return messages.length === 0;
+    return messages;
   }, [getRouteModeHeight, isPointInsideBounds, routePlacementMode, sceneData.points, selectedCircuitId, selectedRoomBounds, selectedRoomId]);
 
   const handleCanvasClick = async (event) => {
@@ -1349,8 +1381,14 @@ const FloorPlan3D = () => {
     // Reset all point spheres to normal scale first
     pointHoverMeshesRef.current.forEach((m) => m.scale.setScalar(1.0));
 
+    // Reset previously highlighted route line
+    if (hoveredRouteLineRef.current) {
+      hoveredRouteLineRef.current.material.color.set(0xf43f5e);
+      hoveredRouteLineRef.current = null;
+    }
+
     let objectContext = null;
-    if (insideRoomView && rendererRef.current && cameraRef.current) {
+    if (rendererRef.current && cameraRef.current) {
       const rect = rendererRef.current.domElement.getBoundingClientRect();
       const objMouse = new THREE.Vector2(
         ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -1359,8 +1397,8 @@ const FloorPlan3D = () => {
       const objRay = new THREE.Raycaster();
       objRay.setFromCamera(objMouse, cameraRef.current);
 
-      // Check electrical points
-      if (pointHoverMeshesRef.current.length > 0) {
+      // Check electrical points (only inside room view)
+      if (insideRoomView && pointHoverMeshesRef.current.length > 0) {
         const ptHits = objRay.intersectObjects(pointHoverMeshesRef.current, false);
         if (ptHits.length > 0) {
           ptHits[0].object.scale.setScalar(1.55);
@@ -1397,15 +1435,24 @@ const FloorPlan3D = () => {
         }
       }
 
-      // Check route lines (only if no point hit)
-      if (!objectContext && routeHoverLinesRef.current.length > 0) {
-        objRay.params.Line = { threshold: 0.08 };
-        const rtHits = objRay.intersectObjects(routeHoverLinesRef.current, false);
+      // Check route segments via invisible cylinder hit-meshes (reliable Mesh raycasting)
+      if (!objectContext && routeHitMeshesRef.current.length > 0) {
+        const rtHits = objRay.intersectObjects(routeHitMeshesRef.current, false);
         if (rtHits.length > 0) {
           const rData = rtHits[0].object.userData.routeData;
           if (rData) {
             hoveredObjectRef.current = { type: 'route', data: rData };
+            const visualLine = routeHoverLinesRef.current.find(
+              (l) => l.userData.routeData?.id === rData.id,
+            );
+            if (visualLine) {
+              visualLine.material.color.set(0xfbbf24);
+              hoveredRouteLineRef.current = visualLine;
+            }
             const rCircuit = circuits.find((c) => String(c.id) === String(rData.circuitId));
+            const nodeCount = (() => {
+              try { return JSON.parse(rData.pathJson)?.length ?? 0; } catch { return 0; }
+            })();
             objectContext = {
               isObject: true,
               objectType: 'Трасса кабеля',
@@ -1416,14 +1463,15 @@ const FloorPlan3D = () => {
               nearestWallCm: null,
               notes: rData.notes || '',
               routeLength: rData.lengthM ? `${Number(rData.lengthM).toFixed(2)} м` : null,
+              routeNodeCount: nodeCount,
               routeId: rData.id,
             };
           }
         }
       }
 
-      // Check openings (doors / windows)
-      if (!objectContext && openingHoverMeshesRef.current.length > 0) {
+      // Check openings (doors / windows) — only inside room view
+      if (insideRoomView && !objectContext && openingHoverMeshesRef.current.length > 0) {
         const opHits = objRay.intersectObjects(openingHoverMeshesRef.current, false);
         if (opHits.length > 0) {
           const od = opHits[0].object.userData.openingData;
@@ -2080,6 +2128,15 @@ const FloorPlan3D = () => {
     rebuildRouteRefsFromNodes(nextNodes);
   };
 
+  const removeLastNode = useCallback(() => {
+    if (routeNodesRef.current.length === 0) return;
+    routeNodesRef.current = routeNodesRef.current.slice(0, -1);
+    routePointsRef.current = routePointsRef.current.slice(0, -1);
+    setRoutePointCount(routeNodesRef.current.length);
+    redrawRouteDraft();
+    validateRouteDraft();
+  }, [redrawRouteDraft, validateRouteDraft]);
+
   const undoLastAction = useCallback(async () => {
     if (historyRef.current.applying || historyRef.current.undo.length === 0) return;
     const action = historyRef.current.undo.pop();
@@ -2260,18 +2317,23 @@ const FloorPlan3D = () => {
         event.preventDefault();
         deleteHoveredObject();
       }
+      if (event.key === 'Backspace' && routeNodesRef.current.length > 0) {
+        event.preventDefault();
+        removeLastNode();
+      }
     };
     window.addEventListener('keydown', onHistoryHotkeys);
     return () => window.removeEventListener('keydown', onHistoryHotkeys);
-  }, [deleteHoveredObject, redoLastAction, undoLastAction]);
+  }, [deleteHoveredObject, redoLastAction, removeLastNode, undoLastAction]);
 
   const saveRoute = async () => {
     if (routePointsRef.current.length < 2) {
       addToast('Добавьте минимум 2 точки трассы перед сохранением.', 'info');
       return;
     }
-    if (!validateRouteDraft()) {
-      routeValidationMessages.slice(0, 3).forEach((msg) => addToast(msg, 'warn'));
+    const draftErrors = validateRouteDraft();
+    if (draftErrors.length > 0) {
+      draftErrors.slice(0, 3).forEach((msg) => addToast(msg, 'warn'));
       return;
     }
     try {
@@ -2306,10 +2368,10 @@ const FloorPlan3D = () => {
           redoError: 'Не удалось повторить создание трассы',
         });
       }
+      await loadSceneData();
       clearRouteDraft();
       setNewRouteName('');
       setError('');
-      await loadSceneData();
     } catch (e) {
       setError(e?.response?.data?.message || 'Не удалось сохранить трассу кабеля');
     }
@@ -2341,7 +2403,7 @@ const FloorPlan3D = () => {
 
   const overwriteSelectedRoute = async () => {
     if (!selectedRouteId) return;
-    if (!validateRouteDraft()) {
+    if (validateRouteDraft().length > 0) {
       setError('Черновик трассы не прошел валидацию.');
       return;
     }
@@ -2792,6 +2854,9 @@ const FloorPlan3D = () => {
                 <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0}>
                   Обновить выбранную
                 </button>
+                <button type="button" className="btn-secondary" onClick={removeLastNode} disabled={routePointCount === 0}>
+                  ← Удалить последний узел
+                </button>
                 <button type="button" className="btn-secondary" onClick={clearRouteDraft}>
                   Очистить черновик
                 </button>
@@ -3084,6 +3149,9 @@ const FloorPlan3D = () => {
                   )}
                   {cursorContext.routeLength && (
                     <div><span className="cc-label">Длина: </span>{cursorContext.routeLength}</div>
+                  )}
+                  {cursorContext.routeNodeCount != null && cursorContext.routeNodeCount > 0 && (
+                    <div><span className="cc-label">Узлов: </span>{cursorContext.routeNodeCount}</div>
                   )}
                   {cursorContext.notes && (
                     <div><span className="cc-label">Заметки: </span>{cursorContext.notes}</div>
