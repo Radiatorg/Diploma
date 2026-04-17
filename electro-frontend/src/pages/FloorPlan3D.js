@@ -746,6 +746,43 @@ const FloorPlan3D = () => {
     [getRoomBounds, sceneData.walls, selectedRoom]
   );
 
+  const moveCameraByKeyboard = useCallback((direction) => {
+    if (!cameraRef.current || !controlsRef.current || !selectedRoomBounds) return false;
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const step = insideRoomView ? 0.12 : 0.3;
+    const roomSpan = Math.max(
+      selectedRoomBounds.maxX - selectedRoomBounds.minX,
+      selectedRoomBounds.maxZ - selectedRoomBounds.minZ
+    );
+    const margin = Math.max(1.2, Math.min(roomSpan * 0.55, 2.8));
+
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-6) return false;
+    forward.normalize();
+
+    const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
+    const delta = new THREE.Vector3();
+    if (direction === 'forward') delta.copy(forward).multiplyScalar(step);
+    if (direction === 'backward') delta.copy(forward).multiplyScalar(-step);
+    if (direction === 'left') delta.copy(right).multiplyScalar(-step);
+    if (direction === 'right') delta.copy(right).multiplyScalar(step);
+    if (delta.lengthSq() === 0) return false;
+
+    const clampX = (x) => Math.min(Math.max(x, selectedRoomBounds.minX - margin), selectedRoomBounds.maxX + margin);
+    const clampZ = (z) => Math.min(Math.max(z, selectedRoomBounds.minZ - margin), selectedRoomBounds.maxZ + margin);
+
+    camera.position.x = clampX(camera.position.x + delta.x);
+    camera.position.z = clampZ(camera.position.z + delta.z);
+    controls.target.x = clampX(controls.target.x + delta.x);
+    controls.target.z = clampZ(controls.target.z + delta.z);
+    controls.update();
+    return true;
+  }, [insideRoomView, selectedRoomBounds]);
+
   const snapPointToSurface = useCallback((point, preferredHeightCm = pointHeight) => {
     if (!point || !selectedRoomBounds) return null;
     const clampedX = Math.min(Math.max(point.x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M);
@@ -1243,6 +1280,22 @@ const FloorPlan3D = () => {
       const targetTag = event.target?.tagName;
       const isTyping = targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT' || event.target?.isContentEditable;
       if (isTyping) return;
+      if (event.key === 'ArrowUp' && moveCameraByKeyboard('forward')) {
+        event.preventDefault();
+        return;
+      }
+      if (event.key === 'ArrowDown' && moveCameraByKeyboard('backward')) {
+        event.preventDefault();
+        return;
+      }
+      if (event.key === 'ArrowLeft' && moveCameraByKeyboard('left')) {
+        event.preventDefault();
+        return;
+      }
+      if (event.key === 'ArrowRight' && moveCameraByKeyboard('right')) {
+        event.preventDefault();
+        return;
+      }
       if (event.key === '1') setTool('add-outlet');
       if (event.key === '2') setTool('add-switch');
       if (event.key === '3') setTool('add-light');
@@ -1253,7 +1306,7 @@ const FloorPlan3D = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [moveCameraByKeyboard]);
 
   const saveCurrent3DCalculation = async () => {
     try {
