@@ -172,13 +172,39 @@ public class CableRunService {
         }
 
         List<ElectricalPoint> points = electricalPointRepository.findByFloorPlanId(floorPlan.getId());
+        List<Wall> walls = wallRepository.findByFloorPlanId(floorPlan.getId());
         Map<Long, ElectricalPoint> pointsById = new HashMap<>();
         for (ElectricalPoint point : points) {
             pointsById.put(point.getId(), point);
         }
 
-        BigDecimal effectiveMaxX = floorPlan.getWidth().multiply(BigDecimal.valueOf(1.5));
-        BigDecimal effectiveMaxY = floorPlan.getHeight().multiply(BigDecimal.valueOf(1.5));
+        BigDecimal effectiveMaxX = floorPlan.getWidth() != null ? floorPlan.getWidth() : BigDecimal.ZERO;
+        BigDecimal effectiveMaxY = floorPlan.getHeight() != null ? floorPlan.getHeight() : BigDecimal.ZERO;
+        for (Wall wall : walls) {
+            if (wall.getStartX() != null) {
+                effectiveMaxX = effectiveMaxX.max(wall.getStartX().abs());
+            }
+            if (wall.getEndX() != null) {
+                effectiveMaxX = effectiveMaxX.max(wall.getEndX().abs());
+            }
+            if (wall.getStartY() != null) {
+                effectiveMaxY = effectiveMaxY.max(wall.getStartY().abs());
+            }
+            if (wall.getEndY() != null) {
+                effectiveMaxY = effectiveMaxY.max(wall.getEndY().abs());
+            }
+        }
+        for (ElectricalPoint point : points) {
+            if (point.getPositionX() != null) {
+                effectiveMaxX = effectiveMaxX.max(point.getPositionX().abs());
+            }
+            if (point.getPositionY() != null) {
+                effectiveMaxY = effectiveMaxY.max(point.getPositionY().abs());
+            }
+        }
+        // Add a small tolerance so routes near edges are not rejected due to rounding.
+        effectiveMaxX = effectiveMaxX.add(BigDecimal.valueOf(50));
+        effectiveMaxY = effectiveMaxY.add(BigDecimal.valueOf(50));
         List<PointCm> nodes = new ArrayList<>();
         for (JsonNode node : root) {
             JsonNode xNode = node.get("x");
@@ -212,7 +238,7 @@ public class CableRunService {
             }
             if (x.compareTo(BigDecimal.ZERO) < 0 || y.compareTo(BigDecimal.ZERO) < 0
                     || x.compareTo(effectiveMaxX) > 0 || y.compareTo(effectiveMaxY) > 0) {
-                throw new BadRequestException("Точка трассы выходит за допустимые границы плана.");
+                throw new BadRequestException("Точка трассы выходит за границы плана.");
             }
             nodes.add(new PointCm(x, y, z, pointId));
         }

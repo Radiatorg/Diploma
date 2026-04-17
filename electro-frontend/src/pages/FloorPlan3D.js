@@ -1338,7 +1338,13 @@ const FloorPlan3D = () => {
         messages.push('Трасса не может начинаться и заканчиваться на выключателях.');
       }
       if (start.pointId && end.pointId && !selectedCircuitId) {
-        messages.push('Оба конца привязаны к точкам — выберите электрическую цепь в списке выше перед сохранением.');
+        const startPoint = sceneData.points.find((p) => p.id === start.pointId);
+        const endPoint = sceneData.points.find((p) => p.id === end.pointId);
+        const startCircuitId = startPoint?.circuitId ? Number(startPoint.circuitId) : null;
+        const endCircuitId = endPoint?.circuitId ? Number(endPoint.circuitId) : null;
+        if (startCircuitId && endCircuitId && startCircuitId === endCircuitId) {
+          messages.push('Оба конца привязаны к точкам одной цепи — выберите эту электрическую цепь в списке выше перед сохранением.');
+        }
       }
     }
 
@@ -1595,6 +1601,10 @@ const FloorPlan3D = () => {
           });
         }
         await loadSceneData();
+        if (tool === 'add-source') {
+          // Keep source and route heights aligned by default (TKP-friendly wall wiring flow).
+          setRouteHeight(Number(payload.heightFromFloor));
+        }
       } catch (e) {
         setError('Не удалось добавить электрическую точку');
       }
@@ -1634,6 +1644,20 @@ const FloorPlan3D = () => {
       }
       const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
       snapped = snappedPointResult.point;
+      // If the route starts from an existing electrical point (especially source),
+      // sync route base height to that point so continuation does not "drop" by Y.
+      if (routePointsRef.current.length === 0 && snappedPointResult.pointId) {
+        const snappedHeightCm = Number(toCentimeters(snapped.y).toFixed(0));
+        if (Number.isFinite(snappedHeightCm)) {
+          setRouteHeight(snappedHeightCm);
+        }
+      }
+      // For wall routing, keep the previous segment height by default.
+      // Vertical transitions should be explicit (Shift + click).
+      if (routeEffectiveSurface === 'wall' && routePointsRef.current.length > 0 && !event.shiftKey) {
+        const prev = routePointsRef.current[routePointsRef.current.length - 1];
+        snapped = new THREE.Vector3(snapped.x, prev.y, snapped.z);
+      }
       const forceVertical = event.shiftKey;
       snapped = makeOrthogonalPoint(snapped, forceVertical);
       routePointsRef.current.push(new THREE.Vector3(snapped.x, snapped.y, snapped.z));
