@@ -30,6 +30,8 @@ const FloorPlan3D = () => {
   const routeDraftBadLineRef = useRef(null);
   const routeHandleMeshesRef = useRef([]);
   const wallHoverMeshesRef = useRef([]);
+  const pointHoverMeshesRef = useRef([]);
+  const routeHoverLinesRef = useRef([]);
   const routePointsRef = useRef([]);
   const routeNodesRef = useRef([]);
   const metaGroupRef = useRef(null);
@@ -92,6 +94,7 @@ const FloorPlan3D = () => {
     points: 0,
     routes: 0,
   });
+  const [toasts, setToasts] = useState([]);
 
   const toMeters = (value) => Number(value || 0) / 100;
   const toCentimeters = (value) => Number(value || 0) * 100;
@@ -162,6 +165,33 @@ const FloorPlan3D = () => {
     return 'Стена';
   }, []);
 
+  const getPointTypeLabel = useCallback((symbolType) => {
+    if (symbolType === 'outlet') return 'Розетка';
+    if (symbolType === 'switch') return 'Выключатель';
+    if (symbolType === 'light') return 'Световая точка';
+    return 'Электрическая точка';
+  }, []);
+
+  const getPointPlacementLabel = useCallback((heightFromFloor, roomHeightM) => {
+    const h = Number(heightFromFloor || 0);
+    const ceilCm = (roomHeightM || DEFAULT_ROOM_HEIGHT_M) * 100;
+    if (h <= 10) return 'На полу';
+    if (h >= ceilCm - 15) return 'На потолке';
+    if (h < 60) return `Нижний пояс (${h} см)`;
+    if (h <= 170) return `Средний пояс (${h} см)`;
+    return `Верхний пояс (${h} см)`;
+  }, []);
+
+  const addToast = useCallback((message, type = 'warn') => {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev.slice(-5), { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 6000);
+  }, []);
+
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const getRouteModeWarning = useCallback(() => {
     if (routePlacementMode === 'ceiling' && routeHeight < 240) {
       return 'ТКП: для потолочной прокладки задайте высоту не ниже 240 см.';
@@ -213,6 +243,8 @@ const FloorPlan3D = () => {
     clearGroup(pointsGroupRef);
     clearGroup(routesGroupRef);
     wallHoverMeshesRef.current = [];
+    pointHoverMeshesRef.current = [];
+    routeHoverLinesRef.current = [];
 
     const floorWidthM = toMeters(sceneData.floorPlan.width);
     const floorHeightM = toMeters(sceneData.floorPlan.height);
@@ -369,7 +401,9 @@ const FloorPlan3D = () => {
       const sphere = new THREE.Mesh(geometry, material);
       sphere.position.set(x, y, z);
       sphere.castShadow = true;
+      sphere.userData = { pointData: point };
       pointsGroupRef.current.add(sphere);
+      pointHoverMeshesRef.current.push(sphere);
     });
 
     sceneData.routes.forEach((route) => {
@@ -381,7 +415,9 @@ const FloorPlan3D = () => {
         const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
         const material = new THREE.LineBasicMaterial({ color: 0xf43f5e, linewidth: 2 });
         const line = new THREE.Line(geometry, material);
+        line.userData = { routeData: route };
         routesGroupRef.current.add(line);
+        routeHoverLinesRef.current.push(line);
       } catch (e) {
         // ignore malformed route json
       }
@@ -811,15 +847,15 @@ const FloorPlan3D = () => {
 
   const ensureRoomEditingAllowed = useCallback(() => {
     if (!selectedRoomId) {
-      setError('Сначала выберите комнату в левой панели.');
+      addToast('Сначала выберите комнату в левой панели.', 'info');
       return false;
     }
     if (!selectedRoomBounds) {
-      setError('У выбранной комнаты не задана геометрия. Укажите размеры и сохраните.');
+      addToast('У выбранной комнаты не задана геометрия. Укажите размеры и сохраните.', 'warn');
       return false;
     }
     return true;
-  }, [selectedRoomBounds, selectedRoomId]);
+  }, [selectedRoomBounds, selectedRoomId, addToast]);
 
   const makeOrthogonalPoint = (nextPoint, forceVertical = false) => {
     if (routePointsRef.current.length === 0) return nextPoint;
@@ -943,27 +979,54 @@ const FloorPlan3D = () => {
       suppressClickRef.current = false;
       return;
     }
-    if (loading || error) return;
-    const point = getGroundIntersection(event);
-    if (!point) return;
+    if (loading) return;
+    setError('');
+
+    // Determine effective surface: hover takes priority over surfaceMode selector
+    const effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
+      ? hoveredWallFace
+      : surfaceMode;
+
+    // Get the best 3D click point for each surface type.
+    // For walls when looking from inside the room, getGroundIntersection fails because
+    // a near-horizontal ray lands far outside bounds. We use the wall mesh hit instead.
+    const getBasePoint = () => {
+      if (effectiveSurface === 'ceiling') {
+        return getIntersectionOnHeight(event, activeRoomHeightM - 0.05)
+          ?? getGroundIntersection(event);
+      }
+      if (effectiveSurface === 'wall') {
+        // Wall mesh raycast works from any camera angle, including inside the room
+        const wallHit = getPointerWallHit(event);
+        if (wallHit?.point) return wallHit.point;
+        // Fallback: project to a mid-height plane (less accurate but better than y=0)
+        return getIntersectionOnHeight(event, Math.max(toMeters(pointHeight), 0.3))
+          ?? getGroundIntersection(event);
+      }
+      // floor
+      return getGroundIntersection(event);
+    };
+
+    const basePoint = getBasePoint();
+    if (!basePoint) return;
 
     const roomBoundedTools = ['add-source', 'add-outlet', 'add-switch', 'add-light', 'draw-route', 'add-door', 'add-window'];
     if (roomBoundedTools.includes(tool)) {
       if (!ensureRoomEditingAllowed()) return;
-      if (!isPointInsideBounds(point, selectedRoomBounds)) {
-        setError('Работа возможна только внутри выбранной комнаты. Для другой комнаты сначала переключитесь на нее.');
+      if (!isPointInsideBounds(basePoint, selectedRoomBounds)) {
+        addToast('Работа возможна только внутри выбранной комнаты. Переключитесь на нужную комнату.', 'warn');
         return;
       }
     }
 
     if (tool === 'add-source' || tool === 'add-outlet' || tool === 'add-switch' || tool === 'add-light') {
       if (tool === 'add-switch' && (pointHeight < 80 || pointHeight > 170)) {
-        setError('ТКП 8.5.9: выключатель должен располагаться на высоте 0.8-1.7 м.');
+        addToast(`ТКП 8.5.9: выключатель — высота 0.8–1.7 м. Сейчас: ${pointHeight} см. Измените «Высота точки».`, 'warn');
         return;
       }
       if (tool === 'add-outlet' && isWetRoom(selectedRoomId)) {
         if (!selectedCircuit || !selectedCircuit.rcdRatingMa || Number(selectedCircuit.rcdRatingMa) > 30) {
-          setError('ТКП 8.5.6 и 8.7.4: для розетки в мокрой зоне выберите цепь с УЗО <= 30 мА.');
+          addToast('ТКП 8.5.6/8.7.4: розетка в мокрой зоне — выберите цепь с УЗО ≤ 30 мА.', 'warn');
           return;
         }
       }
@@ -973,12 +1036,9 @@ const FloorPlan3D = () => {
           ? 'switch'
           : 'light';
       try {
-        const effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
-          ? hoveredWallFace
-          : surfaceMode;
-        const snappedSurfacePoint = snapPointToSurface(point, pointHeight, effectiveSurface);
+        const snappedSurfacePoint = snapPointToSurface(basePoint, pointHeight, effectiveSurface);
         if (!snappedSurfacePoint || !isPointInsideBounds(snappedSurfacePoint, selectedRoomBounds)) {
-          setError('Не удалось привязать точку к выбранной поверхности комнаты.');
+          addToast('Не удалось привязать точку к поверхности. Наведите на стену, пол или потолок и кликните.', 'warn');
           return;
         }
         const payload = {
@@ -988,7 +1048,7 @@ const FloorPlan3D = () => {
           positionY: Number(toCentimeters(snappedSurfacePoint.z).toFixed(2)),
           heightFromFloor: Number(
             tool === 'add-source'
-              ? (effectiveSurface === 'ceiling' ? 260 : effectiveSurface === 'floor' ? 20 : Math.max(pointHeight, 120))
+              ? (effectiveSurface === 'ceiling' ? toCentimeters(activeRoomHeightM - 0.05) : effectiveSurface === 'floor' ? 5 : Math.max(pointHeight, 120))
               : Number(toCentimeters(snappedSurfacePoint.y).toFixed(0))
           ),
           ...(selectedRoomId ? { roomId: selectedRoomId } : {}),
@@ -1018,22 +1078,41 @@ const FloorPlan3D = () => {
     }
 
     if (tool === 'add-door' || tool === 'add-window') {
-      const candidate = getGroundIntersection(event);
-      if (!candidate) return;
-      const snapped = getWallSnapPointFromBounds(candidate, selectedRoomBounds, tool === 'add-door' ? 1 : 1.2);
+      const snapped = getWallSnapPointFromBounds(basePoint, selectedRoomBounds, tool === 'add-door' ? 1 : 1.2);
       if (!isPointInsideBounds(snapped, selectedRoomBounds)) return;
       addOpeningMesh(snapped, tool === 'add-door' ? 'door' : 'window');
       return;
     }
 
     if (tool === 'draw-route') {
+      // Routes use routePlacementMode (independent of surfaceMode)
       const routeEffectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
         ? hoveredWallFace
-        : surfaceMode;
-      let snapped = snapPointToSurface(point, getRouteModeHeight(), routeEffectiveSurface);
+        : routePlacementMode;
+
+      // Get route-specific base point using appropriate intersection for the route surface
+      const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
+      let routeBasePoint;
+      if (routeEffectiveSurface === 'ceiling') {
+        routeBasePoint = getIntersectionOnHeight(event, activeRoomHeightM - 0.05) ?? getGroundIntersection(event);
+      } else if (routeEffectiveSurface === 'floor') {
+        routeBasePoint = getGroundIntersection(event);
+      } else {
+        const wallHit = getPointerWallHit(event);
+        routeBasePoint = wallHit?.point
+          ?? getIntersectionOnHeight(event, routeHeightM)
+          ?? getGroundIntersection(event);
+      }
+      if (!routeBasePoint) return;
+      if (!isPointInsideBounds(routeBasePoint, selectedRoomBounds)) {
+        addToast('Узел трассы должен находиться в пределах выбранной комнаты.', 'warn');
+        return;
+      }
+
+      let snapped = snapPointToSurface(routeBasePoint, getRouteModeHeight(), routeEffectiveSurface);
       if (!snapped) return;
       if (!isPointInsideBounds(snapped, selectedRoomBounds)) {
-        setError('Узел трассы должен находиться в пределах выбранной комнаты.');
+        addToast('Узел трассы должен находиться в пределах выбранной комнаты.', 'warn');
         return;
       }
       const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
@@ -1069,6 +1148,89 @@ const FloorPlan3D = () => {
         y: event.clientY - mountRect.top + 14,
         visible: true,
       });
+    }
+
+    // --- Object hover detection (electrical points + routes) ---
+    // Reset all point spheres to normal scale first
+    pointHoverMeshesRef.current.forEach((m) => m.scale.setScalar(1.0));
+
+    let objectContext = null;
+    if (rendererRef.current && cameraRef.current) {
+      const rect = rendererRef.current.domElement.getBoundingClientRect();
+      const objMouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      const objRay = new THREE.Raycaster();
+      objRay.setFromCamera(objMouse, cameraRef.current);
+
+      // Check electrical points
+      if (pointHoverMeshesRef.current.length > 0) {
+        const ptHits = objRay.intersectObjects(pointHoverMeshesRef.current, false);
+        if (ptHits.length > 0) {
+          ptHits[0].object.scale.setScalar(1.55);
+          const pData = ptHits[0].object.userData.pointData;
+          if (pData) {
+            const pRoom = sceneData.rooms.find((r) => r.id === pData.roomId);
+            const pBounds = getRoomBounds(pRoom, sceneData.walls);
+            const px = toMeters(pData.positionX);
+            const pz = toMeters(pData.positionY);
+            const pRoomHeightM = pRoom ? (roomHeightById[pRoom.id] || ROOM_HEIGHT_M) : ROOM_HEIGHT_M;
+            const pCircuit = circuits.find((c) => String(c.id) === String(pData.circuitId));
+            let nearestWallCm = null;
+            if (pBounds) {
+              nearestWallCm = Number(toCentimeters(Math.min(
+                pz - pBounds.minZ,
+                pBounds.maxZ - pz,
+                px - pBounds.minX,
+                pBounds.maxX - px
+              )).toFixed(0));
+            }
+            objectContext = {
+              isObject: true,
+              objectType: getPointTypeLabel(pData.electricalSymbol?.type),
+              placement: getPointPlacementLabel(pData.heightFromFloor || 0, pRoomHeightM),
+              heightCm: pData.heightFromFloor || 0,
+              roomName: pRoom?.name || '—',
+              circuitName: pCircuit?.name || 'Без цепи',
+              nearestWallCm,
+              notes: pData.notes || '',
+            };
+          }
+        }
+      }
+
+      // Check route lines (only if no point hit)
+      if (!objectContext && routeHoverLinesRef.current.length > 0) {
+        objRay.params.Line = { threshold: 0.08 };
+        const rtHits = objRay.intersectObjects(routeHoverLinesRef.current, false);
+        if (rtHits.length > 0) {
+          const rData = rtHits[0].object.userData.routeData;
+          if (rData) {
+            const rCircuit = circuits.find((c) => String(c.id) === String(rData.circuitId));
+            objectContext = {
+              isObject: true,
+              objectType: 'Трасса кабеля',
+              placement: null,
+              heightCm: null,
+              roomName: null,
+              circuitName: rCircuit?.name || 'Без цепи',
+              nearestWallCm: null,
+              notes: rData.notes || '',
+              routeLength: rData.lengthM ? `${Number(rData.lengthM).toFixed(2)} м` : null,
+            };
+          }
+        }
+      }
+    }
+
+    // If hovering an object, show object info and skip surface detection
+    if (objectContext) {
+      setCursorContext(objectContext);
+      // Still update hover face state so wall highlights work
+      const hoveredFace = getPointerWallFace(event);
+      if (hoveredFace !== hoveredWallFace) setHoveredWallFace(hoveredFace);
+      if (!dragStateRef.current.active) return;
     }
 
     const hoveredFace = getPointerWallFace(event);
@@ -1127,18 +1289,21 @@ const FloorPlan3D = () => {
         }
       }
 
-      if (contextPoint) {
-        const nearestCornerM = getDistanceToNearestCorner(contextPoint, selectedRoomBounds);
-        setCursorContext({
-          surface: surfaceLabel,
-          heightCm: Number(toCentimeters(contextPoint.y).toFixed(0)),
-          nearestCornerM,
-          circuitName: selectedCircuit?.name || 'Без цепи',
-        });
-      } else {
-        setCursorContext(null);
+      if (!objectContext) {
+        if (contextPoint) {
+          const nearestCornerM = getDistanceToNearestCorner(contextPoint, selectedRoomBounds);
+          setCursorContext({
+            isObject: false,
+            surface: surfaceLabel,
+            heightCm: Number(toCentimeters(contextPoint.y).toFixed(0)),
+            nearestCornerM,
+            circuitName: selectedCircuit?.name || 'Без цепи',
+          });
+        } else {
+          setCursorContext(null);
+        }
       }
-    } else {
+    } else if (!objectContext) {
       setCursorContext(null);
     }
 
@@ -1295,6 +1460,35 @@ const FloorPlan3D = () => {
       controlsRef.current.maxPolarAngle = Math.PI / 2;
     }
   }, [insideRoomView, surfaceMode]);
+
+  // When the active tool changes, auto-set pointHeight to ТКП-compliant defaults
+  useEffect(() => {
+    if (tool === 'add-switch') {
+      setPointHeight((prev) => (prev >= 80 && prev <= 170 ? prev : 100));
+    } else if (tool === 'add-outlet' || tool === 'add-source') {
+      setPointHeight((prev) => (prev >= 20 && prev <= 60 ? prev : 30));
+    } else if (tool === 'add-light') {
+      // Lights always go on ceiling — snap to ceiling height via surfaceMode/hover,
+      // but set a default high value so the sphere renders near the ceiling
+      setPointHeight((prev) => (prev >= 200 ? prev : 250));
+    }
+  }, [tool]);
+
+  // When the route placement mode changes, auto-adjust route height to valid range
+  useEffect(() => {
+    if (routePlacementMode === 'ceiling') {
+      setRouteHeight((prev) => Math.max(prev, 240));
+    } else if (routePlacementMode === 'floor') {
+      setRouteHeight((prev) => Math.min(prev, 20));
+    } else {
+      setRouteHeight((prev) => (prev >= 10 && prev <= 230 ? prev : 120));
+    }
+  }, [routePlacementMode]);
+
+  // Sync routePlacementMode with surfaceMode so they stay consistent
+  useEffect(() => {
+    setRoutePlacementMode(surfaceMode);
+  }, [surfaceMode]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -1720,9 +1914,12 @@ const FloorPlan3D = () => {
   }, [redoLastAction, undoLastAction]);
 
   const saveRoute = async () => {
-    if (routePointsRef.current.length < 2) return;
+    if (routePointsRef.current.length < 2) {
+      addToast('Добавьте минимум 2 точки трассы перед сохранением.', 'info');
+      return;
+    }
     if (!validateRouteDraft()) {
-      setError('Черновик трассы не прошел валидацию. Проверьте подсказки в левой панели.');
+      routeValidationMessages.slice(0, 3).forEach((msg) => addToast(msg, 'warn'));
       return;
     }
     try {
@@ -2500,13 +2697,45 @@ const FloorPlan3D = () => {
           />
           {cursorPanel.visible && cursorContext && (
             <div
-              className="cursor-context-panel"
+              className={`cursor-context-panel${cursorContext.isObject ? ' cursor-context-object' : ''}`}
               style={{ left: `${cursorPanel.x}px`, top: `${cursorPanel.y}px` }}
             >
-              <div>Поверхность: {cursorContext.surface}</div>
-              <div>Высота: {cursorContext.heightCm} см</div>
-              <div>Цепь: {cursorContext.circuitName}</div>
-              <div>До угла: {cursorContext.nearestCornerM ?? '-'} м</div>
+              {cursorContext.isObject ? (
+                <>
+                  <div className="cursor-context-title">{cursorContext.objectType}</div>
+                  {cursorContext.roomName && <div><span className="cc-label">Комната:</span> {cursorContext.roomName}</div>}
+                  {cursorContext.placement && <div><span className="cc-label">Расположение:</span> {cursorContext.placement}</div>}
+                  {cursorContext.heightCm != null && <div><span className="cc-label">Высота от пола:</span> {cursorContext.heightCm} см</div>}
+                  {cursorContext.nearestWallCm != null && <div><span className="cc-label">До ближ. стены:</span> {cursorContext.nearestWallCm} см</div>}
+                  <div><span className="cc-label">Цепь:</span> {cursorContext.circuitName}</div>
+                  {cursorContext.routeLength && <div><span className="cc-label">Длина трассы:</span> {cursorContext.routeLength}</div>}
+                  {cursorContext.notes && <div><span className="cc-label">Примечание:</span> {cursorContext.notes}</div>}
+                </>
+              ) : (
+                <>
+                  <div><span className="cc-label">Поверхность:</span> {cursorContext.surface}</div>
+                  <div><span className="cc-label">Высота:</span> {cursorContext.heightCm} см</div>
+                  <div><span className="cc-label">Цепь:</span> {cursorContext.circuitName}</div>
+                  <div><span className="cc-label">До угла:</span> {cursorContext.nearestCornerM ?? '—'} м</div>
+                </>
+              )}
+            </div>
+          )}
+          {toasts.length > 0 && (
+            <div className="toast-container">
+              {toasts.map((toast) => (
+                <div key={toast.id} className={`toast toast-${toast.type}`}>
+                  <span className="toast-message">{toast.message}</span>
+                  <button
+                    type="button"
+                    className="toast-dismiss"
+                    onClick={() => dismissToast(toast.id)}
+                    aria-label="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           {loading && <div className="floor-plan-3d-overlay">Загрузка 3D-сцены...</div>}
