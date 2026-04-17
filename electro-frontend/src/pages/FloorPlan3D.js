@@ -17,6 +17,232 @@ import './FloorPlan3D.css';
 
 const DEFAULT_ROOM_HEIGHT_M = 2.8;
 
+// ─── 3D model builder helpers ───────────────────────────────────────────────
+
+function buildOutletGroup(accentColor) {
+  const group = new THREE.Group();
+  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
+  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
+  const holeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+
+  const border = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), borderMat);
+  border.position.z = -0.004;
+  group.add(border);
+
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.024), plateMat);
+  group.add(plate);
+
+  [-0.026, 0.026].forEach((ox) => {
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 8), holeMat);
+    pin.rotation.x = Math.PI / 2;
+    pin.position.set(ox, 0.015, 0.001);
+    group.add(pin);
+  });
+
+  const gnd = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.03, 8), holeMat);
+  gnd.rotation.x = Math.PI / 2;
+  gnd.position.set(0, -0.021, 0.001);
+  group.add(gnd);
+
+  return group;
+}
+
+function buildSwitchGroup(accentColor) {
+  const group = new THREE.Group();
+  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf0ede8, roughness: 0.8 });
+  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
+  const rockerMat = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.5 });
+
+  const border = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.018), borderMat);
+  border.position.z = -0.004;
+  group.add(border);
+
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.024), plateMat);
+  group.add(plate);
+
+  const rocker = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.1, 0.028), rockerMat);
+  rocker.rotation.x = -0.18;
+  group.add(rocker);
+
+  const notchMat = new THREE.MeshStandardMaterial({ color: 0xaabbcc });
+  const notch = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.006, 0.012), notchMat);
+  notch.position.set(0, 0.02, 0.017);
+  group.add(notch);
+
+  return group;
+}
+
+function buildLightGroup(accentColor) {
+  const group = new THREE.Group();
+
+  const mountMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5, metalness: 0.45 });
+  const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.085, 0.025, 16), mountMat);
+  mount.position.y = 0.01;
+  group.add(mount);
+
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xb8960c, roughness: 0.4, metalness: 0.6 });
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.008, 6, 24), rimMat);
+  rim.rotation.x = Math.PI / 2;
+  group.add(rim);
+
+  const cordMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), cordMat);
+  cord.position.y = -0.067;
+  group.add(cord);
+
+  const socketMat = new THREE.MeshStandardMaterial({ color: 0x888877, roughness: 0.6 });
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.04, 10), socketMat);
+  socket.position.y = -0.14;
+  group.add(socket);
+
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfffde7,
+    emissive: 0xffee66,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 12), bulbMat);
+  bulb.position.y = -0.195;
+  group.add(bulb);
+
+  return group;
+}
+
+function buildSourceGroup() {
+  const group = new THREE.Group();
+
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.65, metalness: 0.35 });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.15, 0.045), boxMat);
+  group.add(box);
+
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.7 });
+  const innerDoor = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.006), doorMat);
+  innerDoor.position.set(-0.005, -0.005, 0.026);
+  group.add(innerDoor);
+
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af });
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.025, 6), handleMat);
+  handle.rotation.z = Math.PI / 2;
+  handle.position.set(0.028, -0.005, 0.03);
+  group.add(handle);
+
+  const ledMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 1.2 });
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 8), ledMat);
+  led.position.set(0.03, 0.055, 0.027);
+  group.add(led);
+
+  return group;
+}
+
+function buildPointGroup(point) {
+  const type = point?.electricalSymbol?.type || '';
+  const notes = (point?.notes || '').toLowerCase();
+  const isSource = notes.includes('стартов') || notes.includes('start');
+  if (type === 'outlet') return buildOutletGroup(0x10b981);
+  if (type === 'switch') return buildSwitchGroup(0x60a5fa);
+  if (type === 'light' && !isSource) return buildLightGroup(0xffc857);
+  return buildSourceGroup();
+}
+
+function buildDoorGroup(oWidthM, oHeightM, wallThickness) {
+  const group = new THREE.Group();
+  const depth = wallThickness + 0.06;
+  const jambW = 0.065;
+  const lintH = 0.075;
+
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xe8ddd0, roughness: 0.75 });
+  const lJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, oHeightM + lintH, depth), frameMat);
+  lJamb.position.set(-oWidthM / 2 - jambW / 2, lintH / 2, 0);
+  group.add(lJamb);
+
+  const rJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, oHeightM + lintH, depth), frameMat);
+  rJamb.position.set(oWidthM / 2 + jambW / 2, lintH / 2, 0);
+  group.add(rJamb);
+
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + jambW * 2, lintH, depth), frameMat);
+  lintel.position.set(0, oHeightM / 2 + lintH / 2, 0);
+  group.add(lintel);
+
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0xc8935a, roughness: 0.65, transparent: true, opacity: 0.92 });
+  const leaf = new THREE.Mesh(new THREE.BoxGeometry(oWidthM - 0.03, oHeightM - 0.015, 0.045), leafMat);
+  group.add(leaf);
+
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0xb5824a, roughness: 0.7 });
+  [
+    [0, oHeightM * 0.22, 0.025],
+    [0, -oHeightM * 0.22, 0.025],
+  ].forEach(([px, py, pz]) => {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(oWidthM * 0.7, oHeightM * 0.28, 0.008), panelMat);
+    panel.position.set(px, py, pz);
+    group.add(panel);
+  });
+
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
+  const handleBar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.11, 8), handleMat);
+  handleBar.rotation.x = Math.PI / 2;
+  handleBar.position.set(oWidthM / 2 - 0.09, -oHeightM * 0.05, 0.03);
+  group.add(handleBar);
+
+  const handleStem = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.04, 8), handleMat);
+  handleStem.position.set(oWidthM / 2 - 0.09, -oHeightM * 0.05, 0.05);
+  group.add(handleStem);
+
+  const arcMat = new THREE.MeshStandardMaterial({ color: 0xf97316, transparent: true, opacity: 0.35, roughness: 0.8 });
+  const arc = new THREE.Mesh(new THREE.TorusGeometry(oWidthM * 0.85, 0.012, 4, 20, Math.PI / 2), arcMat);
+  arc.rotation.x = Math.PI / 2;
+  arc.position.set(-oWidthM / 2, -oHeightM / 2, 0);
+  group.add(arc);
+
+  return group;
+}
+
+function buildWindowGroup(oWidthM, oHeightM, wallThickness) {
+  const group = new THREE.Group();
+  const depth = wallThickness + 0.06;
+  const frameW = 0.06;
+
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.7 });
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + frameW * 2, frameW, depth), frameMat);
+  top.position.set(0, oHeightM / 2 + frameW / 2, 0);
+  group.add(top);
+
+  const bot = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + frameW * 2, frameW, depth), frameMat);
+  bot.position.set(0, -oHeightM / 2 - frameW / 2, 0);
+  group.add(bot);
+
+  const lSide = new THREE.Mesh(new THREE.BoxGeometry(frameW, oHeightM + frameW * 2, depth), frameMat);
+  lSide.position.set(-oWidthM / 2 - frameW / 2, 0, 0);
+  group.add(lSide);
+
+  const rSide = new THREE.Mesh(new THREE.BoxGeometry(frameW, oHeightM + frameW * 2, depth), frameMat);
+  rSide.position.set(oWidthM / 2 + frameW / 2, 0, 0);
+  group.add(rSide);
+
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0xbfdbfe,
+    transparent: true,
+    opacity: 0.38,
+    roughness: 0.05,
+    metalness: 0.1,
+  });
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(oWidthM - 0.01, oHeightM - 0.01, 0.008), glassMat);
+  group.add(glass);
+
+  const mullionMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
+  const vMullion = new THREE.Mesh(new THREE.BoxGeometry(0.04, oHeightM, depth * 0.6), mullionMat);
+  group.add(vMullion);
+
+  const hMullion = new THREE.Mesh(new THREE.BoxGeometry(oWidthM, 0.04, depth * 0.6), mullionMat);
+  group.add(hMullion);
+
+  return group;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const FloorPlan3D = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -230,16 +456,12 @@ const FloorPlan3D = () => {
     const depthM = 0.08;
     const heightM = type === 'door' ? 2.0 : 1.2;
     const yCenter = type === 'door' ? heightM / 2 : roomCeilingHeightM - heightM / 2;
-    const geometry = new THREE.BoxGeometry(widthM, heightM, depthM);
-    const material = new THREE.MeshStandardMaterial({
-      color: type === 'door' ? 0xf97316 : 0x60a5fa,
-      transparent: true,
-      opacity: 0.85,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(point.x, yCenter, point.z);
-    mesh.castShadow = true;
-    metaGroupRef.current.add(mesh);
+    const group = type === 'door'
+      ? buildDoorGroup(widthM, heightM, depthM)
+      : buildWindowGroup(widthM, heightM, depthM);
+    group.position.set(point.x, yCenter, point.z);
+    group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+    metaGroupRef.current.add(group);
   }, [doorWidthCm, roomCeilingHeightM, toMeters, windowWidthCm]);
 
   const redrawScene = useCallback(() => {
@@ -413,17 +635,17 @@ const FloorPlan3D = () => {
           const yCenter = opening.openingType === 'door' ? oHeightM / 2 : Math.max(wallHeight - oHeightM / 2 - 0.3, oHeightM / 2);
           const cx = startX + wallDirX * (posM + oWidthM / 2);
           const cz = startZ + wallDirZ * (posM + oWidthM / 2);
-          const openGeometry = new THREE.BoxGeometry(oWidthM, oHeightM, thickness + 0.06);
-          const openMaterial = new THREE.MeshStandardMaterial({
-            color: opening.openingType === 'door' ? 0xf97316 : 0x60a5fa,
-            transparent: true,
-            opacity: 0.88,
-          });
-          const openMesh = new THREE.Mesh(openGeometry, openMaterial);
-          openMesh.position.set(cx, yCenter, cz);
-          openMesh.rotation.y = wallAngle;
-          openMesh.castShadow = true;
-          openMesh.userData = {
+          const openingGroup = opening.openingType === 'door'
+            ? buildDoorGroup(oWidthM, oHeightM, thickness)
+            : buildWindowGroup(oWidthM, oHeightM, thickness);
+          openingGroup.position.set(cx, yCenter, cz);
+          openingGroup.rotation.y = wallAngle;
+          openingGroup.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+
+          const hitBoxGeo = new THREE.BoxGeometry(oWidthM, oHeightM, thickness + 0.06);
+          const hitBoxMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+          const hitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
+          hitBox.userData = {
             openingData: {
               wallId: wall.id,
               wallRaw: wall,
@@ -431,8 +653,9 @@ const FloorPlan3D = () => {
               opening,
             },
           };
-          wallsGroupRef.current.add(openMesh);
-          openingHoverMeshesRef.current.push(openMesh);
+          openingGroup.add(hitBox);
+          wallsGroupRef.current.add(openingGroup);
+          openingHoverMeshesRef.current.push(hitBox);
         });
       }
     });
@@ -442,14 +665,29 @@ const FloorPlan3D = () => {
       const x = toMeters(point.positionX);
       const z = toMeters(point.positionY);
       const y = Math.max(toMeters(point.heightFromFloor || 30), 0.05);
-      const geometry = new THREE.SphereGeometry(0.07, 20, 20);
-      const material = new THREE.MeshStandardMaterial({ color: getPointColor(point) });
-      const sphere = new THREE.Mesh(geometry, material);
-      sphere.position.set(x, y, z);
-      sphere.castShadow = true;
-      sphere.userData = { pointData: point };
-      pointsGroupRef.current.add(sphere);
-      pointHoverMeshesRef.current.push(sphere);
+
+      const group = buildPointGroup(point);
+      group.position.set(x, y, z);
+
+      const pRoom = sceneData.rooms.find((r) => r.id === point.roomId);
+      const pBounds = getRoomBounds(pRoom);
+      if (pBounds) {
+        const rcX = (pBounds.minX + pBounds.maxX) / 2;
+        const rcZ = (pBounds.minZ + pBounds.maxZ) / 2;
+        group.rotation.y = Math.atan2(rcX - x, rcZ - z);
+      }
+
+      group.castShadow = true;
+      group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+
+      const hitGeo = new THREE.SphereGeometry(0.11, 8, 8);
+      const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+      const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+      hitMesh.userData = { pointData: point, pointGroup: group };
+      group.add(hitMesh);
+
+      pointsGroupRef.current.add(group);
+      pointHoverMeshesRef.current.push(hitMesh);
     });
 
     sceneData.routes.forEach((route) => {
@@ -458,23 +696,45 @@ const FloorPlan3D = () => {
         const path = JSON.parse(route.pathJson);
         if (!Array.isArray(path) || path.length < 2) return;
         const points3D = path.map((node) => new THREE.Vector3(toMeters(node.x), toMeters(node.z || 0), toMeters(node.y)));
-        const geometry = new THREE.BufferGeometry().setFromPoints(points3D);
-        const material = new THREE.LineBasicMaterial({
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points3D);
+        const lineMat = new THREE.LineBasicMaterial({
           color: 0xf43f5e,
           depthTest: false,
           depthWrite: false,
           transparent: true,
-          opacity: 0.95,
+          opacity: 0,
         });
-        const line = new THREE.Line(geometry, material);
+        const line = new THREE.Line(lineGeo, lineMat);
         line.renderOrder = 10;
-        line.userData = { routeData: route };
+        const tubeMeshes = [];
+        for (let ti = 0; ti < points3D.length - 1; ti += 1) {
+          const curve = new THREE.LineCurve3(points3D[ti], points3D[ti + 1]);
+          const tubeGeo = new THREE.TubeGeometry(curve, 1, 0.025, 8, false);
+          const tubeMat = new THREE.MeshBasicMaterial({
+            color: 0xf43f5e,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.9,
+          });
+          const tube = new THREE.Mesh(tubeGeo, tubeMat);
+          tube.renderOrder = 10;
+          routesGroupRef.current.add(tube);
+          tubeMeshes.push(tube);
+        }
+        line.userData = { routeData: route, tubeMeshes };
         routesGroupRef.current.add(line);
         routeHoverLinesRef.current.push(line);
 
         points3D.forEach((pt) => {
-          const nodeGeo = new THREE.SphereGeometry(0.05, 10, 10);
-          const nodeMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, depthTest: false, depthWrite: false, transparent: true });
+          const nodeGeo = new THREE.OctahedronGeometry(0.052, 0);
+          const nodeMat = new THREE.MeshBasicMaterial({
+            color: 0xfb7185,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.95,
+          });
           const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
           nodeMesh.renderOrder = 11;
           nodeMesh.position.copy(pt);
@@ -1378,12 +1638,16 @@ const FloorPlan3D = () => {
     }
 
     // --- Object hover detection (electrical points + routes) ---
-    // Reset all point spheres to normal scale first
-    pointHoverMeshesRef.current.forEach((m) => m.scale.setScalar(1.0));
+    // Reset all point groups to normal scale
+    pointHoverMeshesRef.current.forEach((m) => {
+      const g = m.userData.pointGroup || m;
+      g.scale.setScalar(1.0);
+    });
 
-    // Reset previously highlighted route line
+    // Reset previously highlighted route tubes/line
     if (hoveredRouteLineRef.current) {
       hoveredRouteLineRef.current.material.color.set(0xf43f5e);
+      (hoveredRouteLineRef.current.userData.tubeMeshes || []).forEach((tm) => tm.material.color.set(0xf43f5e));
       hoveredRouteLineRef.current = null;
     }
 
@@ -1401,8 +1665,10 @@ const FloorPlan3D = () => {
       if (insideRoomView && pointHoverMeshesRef.current.length > 0) {
         const ptHits = objRay.intersectObjects(pointHoverMeshesRef.current, false);
         if (ptHits.length > 0) {
-          ptHits[0].object.scale.setScalar(1.55);
-          const pData = ptHits[0].object.userData.pointData;
+          const hitObj = ptHits[0].object;
+          const scaleTarget = hitObj.userData.pointGroup || hitObj;
+          scaleTarget.scale.setScalar(1.55);
+          const pData = hitObj.userData.pointData;
           if (pData) {
             hoveredObjectRef.current = { type: 'point', data: pData };
             const pRoom = sceneData.rooms.find((r) => r.id === pData.roomId);
@@ -1447,6 +1713,7 @@ const FloorPlan3D = () => {
             );
             if (visualLine) {
               visualLine.material.color.set(0xfbbf24);
+              (visualLine.userData.tubeMeshes || []).forEach((tm) => tm.material.color.set(0xfbbf24));
               hoveredRouteLineRef.current = visualLine;
             }
             const rCircuit = circuits.find((c) => String(c.id) === String(rData.circuitId));
