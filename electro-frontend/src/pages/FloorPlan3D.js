@@ -32,6 +32,7 @@ const FloorPlan3D = () => {
   const wallHoverMeshesRef = useRef([]);
   const pointHoverMeshesRef = useRef([]);
   const routeHoverLinesRef = useRef([]);
+  const openingHoverMeshesRef = useRef([]);
   const routePointsRef = useRef([]);
   const routeNodesRef = useRef([]);
   const metaGroupRef = useRef(null);
@@ -41,6 +42,7 @@ const FloorPlan3D = () => {
   const dragStateRef = useRef({ active: false, nodeIndex: -1 });
   const suppressClickRef = useRef(false);
   const hoveredObjectRef = useRef(null);
+  const mouseDownPosRef = useRef(null);
   const historyRef = useRef({ undo: [], redo: [], applying: false });
 
   const [loading, setLoading] = useState(true);
@@ -246,6 +248,7 @@ const FloorPlan3D = () => {
     wallHoverMeshesRef.current = [];
     pointHoverMeshesRef.current = [];
     routeHoverLinesRef.current = [];
+    openingHoverMeshesRef.current = [];
 
     const floorWidthM = toMeters(sceneData.floorPlan.width);
     const floorHeightM = toMeters(sceneData.floorPlan.height);
@@ -377,20 +380,58 @@ const FloorPlan3D = () => {
 
       const geometry = new THREE.BoxGeometry(length, wallHeight, thickness);
       const isExternal = wall.wallType === 'external';
+      const hasOpenings = wall.openings && wall.openings.length > 0;
+      const baseOpacity = !selectedRoomId || wall.roomId === selectedRoomId || isExternal ? 0.96 : 0.42;
       const material = new THREE.MeshStandardMaterial({
         color: isExternal ? 0xb7bcc4 : 0x9aa1ab,
         transparent: true,
-        opacity: !selectedRoomId || wall.roomId === selectedRoomId || isExternal ? 0.96 : 0.42,
+        // Make walls with openings semi-transparent so points/routes behind them stay visible
+        opacity: hasOpenings ? Math.min(baseOpacity, 0.22) : baseOpacity,
         polygonOffset: !isExternal,
         polygonOffsetFactor: !isExternal ? -1 : 0,
         polygonOffsetUnits: !isExternal ? -1 : 0,
       });
       const wallMesh = new THREE.Mesh(geometry, material);
+      const wallAngle = -Math.atan2(dz, dx);
       wallMesh.position.set((startX + endX) / 2, wallHeight / 2, (startZ + endZ) / 2);
-      wallMesh.rotation.y = -Math.atan2(dz, dx);
+      wallMesh.rotation.y = wallAngle;
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       wallsGroupRef.current.add(wallMesh);
+
+      if (hasOpenings) {
+        const wallLenM = length;
+        const wallDirX = dx / wallLenM;
+        const wallDirZ = dz / wallLenM;
+        wall.openings.forEach((opening, openingIdx) => {
+          const posM = toMeters(opening.position || 0);
+          const oWidthM = toMeters(opening.width || 90);
+          const oHeightM = toMeters(opening.height || (opening.openingType === 'door' ? 200 : 120));
+          const yCenter = opening.openingType === 'door' ? oHeightM / 2 : Math.max(wallHeight - oHeightM / 2 - 0.3, oHeightM / 2);
+          const cx = startX + wallDirX * (posM + oWidthM / 2);
+          const cz = startZ + wallDirZ * (posM + oWidthM / 2);
+          const openGeometry = new THREE.BoxGeometry(oWidthM, oHeightM, thickness + 0.06);
+          const openMaterial = new THREE.MeshStandardMaterial({
+            color: opening.openingType === 'door' ? 0xf97316 : 0x60a5fa,
+            transparent: true,
+            opacity: 0.88,
+          });
+          const openMesh = new THREE.Mesh(openGeometry, openMaterial);
+          openMesh.position.set(cx, yCenter, cz);
+          openMesh.rotation.y = wallAngle;
+          openMesh.castShadow = true;
+          openMesh.userData = {
+            openingData: {
+              wallId: wall.id,
+              wallRaw: wall,
+              openingIndex: openingIdx,
+              opening,
+            },
+          };
+          wallsGroupRef.current.add(openMesh);
+          openingHoverMeshesRef.current.push(openMesh);
+        });
+      }
     });
 
     const activeRoomForFilter = selectedRoomId ? sceneData.rooms.find((r) => r.id === selectedRoomId) : null;
@@ -582,8 +623,12 @@ const FloorPlan3D = () => {
   }, [redrawScene]);
 
   useEffect(() => {
-    if (pointsGroupRef.current) pointsGroupRef.current.visible = insideRoomView;
-    if (routesGroupRef.current) routesGroupRef.current.visible = insideRoomView;
+    if (pointsGroupRef.current) pointsGroupRef.current.visible = true;
+    if (routesGroupRef.current) routesGroupRef.current.visible = true;
+    if (!insideRoomView) {
+      hoveredObjectRef.current = null;
+      setCursorContext((prev) => (prev?.isObject ? null : prev));
+    }
   }, [insideRoomView]);
 
   const getGroundIntersection = (event) => {
@@ -871,6 +916,28 @@ const FloorPlan3D = () => {
     [sceneData.points, selectedRoomId]
   );
 
+  const findWallForFace = useCallback((face, bounds) => {
+    const tol = 0.35;
+    const matchesFace = (wall) => {
+      const sx = toMeters(wall.startX);
+      const sz = toMeters(wall.startY);
+      const ex = toMeters(wall.endX);
+      const ez = toMeters(wall.endY);
+      if (face === 'north') return Math.abs(sz - bounds.minZ) < tol && Math.abs(ez - bounds.minZ) < tol;
+      if (face === 'south') return Math.abs(sz - bounds.maxZ) < tol && Math.abs(ez - bounds.maxZ) < tol;
+      if (face === 'west') return Math.abs(sx - bounds.minX) < tol && Math.abs(ex - bounds.minX) < tol;
+      if (face === 'east') return Math.abs(sx - bounds.maxX) < tol && Math.abs(ex - bounds.maxX) < tol;
+      return false;
+    };
+    // First try walls that belong to this room
+    const withRoom = sceneData.walls.find(
+      (wall) => String(wall.roomId) === String(selectedRoomId) && matchesFace(wall),
+    );
+    if (withRoom) return withRoom;
+    // Fallback: any wall matching the face geometry (handles walls without roomId)
+    return sceneData.walls.find(matchesFace) || null;
+  }, [sceneData.walls, selectedRoomId, toMeters]);
+
   const ensureRoomEditingAllowed = useCallback(() => {
     if (!selectedRoomId) {
       addToast('Сначала выберите комнату в левой панели.', 'info');
@@ -1003,13 +1070,116 @@ const FloorPlan3D = () => {
   const handleCanvasClick = async (event) => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
+      mouseDownPosRef.current = null;
       return;
+    }
+    if (mouseDownPosRef.current) {
+      const dx = event.clientX - mouseDownPosRef.current.x;
+      const dy = event.clientY - mouseDownPosRef.current.y;
+      mouseDownPosRef.current = null;
+      if (dx * dx + dy * dy > 36) return;
     }
     if (loading) return;
     setError('');
 
     if (tool === 'delete') {
       await deleteHoveredObject();
+      return;
+    }
+
+    if (tool === 'add-door' || tool === 'add-window') {
+      if (!ensureRoomEditingAllowed()) return;
+
+      const wallHit = getPointerWallHit(event);
+      const clickFace = wallHit?.wallFace;
+      if (!clickFace || !['north', 'south', 'east', 'west'].includes(clickFace)) {
+        addToast('Наведите курсор на стену (она подсветится) и нажмите ЛКМ.', 'warn');
+        return;
+      }
+
+      const hitPoint = wallHit.point;
+      const snapped = getWallSnapPointFromBounds(hitPoint, selectedRoomBounds, tool === 'add-door' ? 1.0 : 1.5);
+
+      const openingType = tool === 'add-door' ? 'door' : 'window';
+      const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
+      const heightCm = tool === 'add-door' ? 200 : 120;
+
+      let matchingWall = findWallForFace(clickFace, selectedRoomBounds);
+
+      // If no DB wall found, try to auto-create it from room geometry
+      if (!matchingWall && selectedRoom) {
+        const px = Number(selectedRoom.positionX || 0);
+        const py = Number(selectedRoom.positionY || 0);
+        const rw = Number(selectedRoom.width || 0);
+        const rh = Number(selectedRoom.height || 0);
+        if (rw > 0 && rh > 0) {
+          const faceWallCoords = {
+            north: { startX: px, startY: py, endX: px + rw, endY: py },
+            south: { startX: px, startY: py + rh, endX: px + rw, endY: py + rh },
+            west:  { startX: px, startY: py, endX: px, endY: py + rh },
+            east:  { startX: px + rw, startY: py, endX: px + rw, endY: py + rh },
+          };
+          const coords = faceWallCoords[clickFace];
+          if (coords) {
+            try {
+              const created = await wallAPI.create(projectId, {
+                ...coords,
+                thickness: 20,
+                wallType: 'internal',
+                roomId: selectedRoomId,
+                openings: [],
+              });
+              matchingWall = created.data;
+            } catch (createErr) {
+              addToast(`Не удалось создать стену: ${createErr?.response?.data?.message || createErr?.message || 'ошибка сервера'}`, 'error');
+              return;
+            }
+          }
+        }
+      }
+
+      if (!matchingWall) {
+        addToast('Стена не найдена. Убедитесь, что у комнаты заданы размеры в «Геометрия комнаты для 3D».', 'warn');
+        return;
+      }
+
+      const wallSX = Number(matchingWall.startX);
+      const wallSY = Number(matchingWall.startY);
+      const wallEX = Number(matchingWall.endX);
+      const wallEY = Number(matchingWall.endY);
+      const isHorizontalWall = Math.abs(wallEX - wallSX) >= Math.abs(wallEY - wallSY);
+      const wallStartRef = isHorizontalWall ? Math.min(wallSX, wallEX) : Math.min(wallSY, wallEY);
+      const positionCm = isHorizontalWall
+        ? toCentimeters(snapped.x) - wallStartRef
+        : toCentimeters(snapped.z) - wallStartRef;
+
+      try {
+        const existingOpenings = (matchingWall.openings || []).map((o) => ({
+          position: Number(o.position),
+          width: Number(o.width),
+          height: Number(o.height || (o.openingType === 'door' ? 200 : 120)),
+          openingType: o.openingType,
+        }));
+        await wallAPI.update(projectId, matchingWall.id, {
+          startX: Number(matchingWall.startX),
+          startY: Number(matchingWall.startY),
+          endX: Number(matchingWall.endX),
+          endY: Number(matchingWall.endY),
+          thickness: Number(matchingWall.thickness || 20),
+          wallType: matchingWall.wallType || 'internal',
+          roomId: matchingWall.roomId,
+          openings: [...existingOpenings, {
+            position: Number(Math.max(0, positionCm).toFixed(2)),
+            width: widthCm,
+            height: heightCm,
+            openingType,
+          }],
+        });
+        addToast(`${openingType === 'door' ? 'Дверь' : 'Окно'} добавлено`, 'info');
+        await loadSceneData();
+      } catch (e) {
+        addToast(`Не удалось сохранить проём: ${e?.response?.data?.message || e?.message || 'ошибка сервера'}`, 'error');
+      }
       return;
     }
 
@@ -1041,7 +1211,7 @@ const FloorPlan3D = () => {
     const basePoint = getBasePoint();
     if (!basePoint) return;
 
-    const roomBoundedTools = ['add-source', 'add-outlet', 'add-switch', 'add-light', 'draw-route', 'add-door', 'add-window'];
+    const roomBoundedTools = ['add-source', 'add-outlet', 'add-switch', 'add-light', 'draw-route'];
     if (roomBoundedTools.includes(tool)) {
       if (!ensureRoomEditingAllowed()) return;
       if (!isPointInsideBounds(basePoint, selectedRoomBounds)) {
@@ -1108,13 +1278,6 @@ const FloorPlan3D = () => {
       return;
     }
 
-    if (tool === 'add-door' || tool === 'add-window') {
-      const snapped = getWallSnapPointFromBounds(basePoint, selectedRoomBounds, tool === 'add-door' ? 1 : 1.2);
-      if (!isPointInsideBounds(snapped, selectedRoomBounds)) return;
-      addOpeningMesh(snapped, tool === 'add-door' ? 'door' : 'window');
-      return;
-    }
-
     if (tool === 'draw-route') {
       // Routes use routePlacementMode (independent of surfaceMode)
       const routeEffectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
@@ -1164,6 +1327,7 @@ const FloorPlan3D = () => {
   };
 
   const handleCanvasMouseDown = (event) => {
+    mouseDownPosRef.current = { x: event.clientX, y: event.clientY };
     const picked = pickRouteHandleIndex(event);
     if (picked < 0) return;
     dragStateRef.current = { active: true, nodeIndex: picked };
@@ -1186,7 +1350,7 @@ const FloorPlan3D = () => {
     pointHoverMeshesRef.current.forEach((m) => m.scale.setScalar(1.0));
 
     let objectContext = null;
-    if (rendererRef.current && cameraRef.current) {
+    if (insideRoomView && rendererRef.current && cameraRef.current) {
       const rect = rendererRef.current.domElement.getBoundingClientRect();
       const objMouse = new THREE.Vector2(
         ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -1258,7 +1422,32 @@ const FloorPlan3D = () => {
         }
       }
 
+      // Check openings (doors / windows)
+      if (!objectContext && openingHoverMeshesRef.current.length > 0) {
+        const opHits = objRay.intersectObjects(openingHoverMeshesRef.current, false);
+        if (opHits.length > 0) {
+          const od = opHits[0].object.userData.openingData;
+          if (od) {
+            hoveredObjectRef.current = { type: 'opening', data: od };
+            const isDoor = od.opening.openingType === 'door';
+            objectContext = {
+              isObject: true,
+              objectType: isDoor ? 'Дверь' : 'Окно',
+              placement: null,
+              heightCm: Number(od.opening.height || (isDoor ? 200 : 120)),
+              roomName: null,
+              circuitName: null,
+              nearestWallCm: null,
+              notes: `Ширина: ${Number(od.opening.width || (isDoor ? 90 : 120))} см`,
+              routeLength: null,
+            };
+          }
+        }
+      }
+
       if (!objectContext) hoveredObjectRef.current = null;
+    } else {
+      hoveredObjectRef.current = null;
     }
 
     // If hovering an object, show object info and skip surface detection
@@ -1824,10 +2013,12 @@ const FloorPlan3D = () => {
   }, []);
 
   const handleCanvasMouseUp = () => {
-    if (!dragStateRef.current.active) return;
-    dragStateRef.current = { active: false, nodeIndex: -1 };
-    suppressClickRef.current = true;
-    redrawRouteDraft();
+    if (dragStateRef.current.active) {
+      dragStateRef.current = { active: false, nodeIndex: -1 };
+      suppressClickRef.current = true;
+      mouseDownPosRef.current = null;
+      redrawRouteDraft();
+    }
   };
 
   const handleCanvasMouseLeave = () => {
@@ -1986,6 +2177,67 @@ const FloorPlan3D = () => {
         await loadSceneData();
       } catch (e) {
         setError('Не удалось удалить трассу');
+      }
+    } else if (hovered.type === 'opening') {
+      const { wallId, wallRaw, openingIndex } = hovered.data;
+      const removedOpening = (wallRaw.openings || [])[openingIndex];
+      const updatedOpenings = (wallRaw.openings || [])
+        .filter((_, i) => i !== openingIndex)
+        .map((o) => ({
+          position: Number(o.position),
+          width: Number(o.width),
+          height: Number(o.height || (o.openingType === 'door' ? 200 : 120)),
+          openingType: o.openingType,
+        }));
+      try {
+        await wallAPI.update(projectId, wallId, {
+          startX: Number(wallRaw.startX),
+          startY: Number(wallRaw.startY),
+          endX: Number(wallRaw.endX),
+          endY: Number(wallRaw.endY),
+          thickness: Number(wallRaw.thickness || 20),
+          wallType: wallRaw.wallType || 'internal',
+          roomId: wallRaw.roomId,
+          openings: updatedOpenings,
+        });
+        hoveredObjectRef.current = null;
+        setCursorContext(null);
+        if (removedOpening) {
+          pushHistoryAction({
+            undo: async () => wallAPI.update(projectId, wallId, {
+              startX: Number(wallRaw.startX),
+              startY: Number(wallRaw.startY),
+              endX: Number(wallRaw.endX),
+              endY: Number(wallRaw.endY),
+              thickness: Number(wallRaw.thickness || 20),
+              wallType: wallRaw.wallType || 'internal',
+              roomId: wallRaw.roomId,
+              openings: [...updatedOpenings, {
+                position: Number(removedOpening.position),
+                width: Number(removedOpening.width),
+                height: Number(removedOpening.height || (removedOpening.openingType === 'door' ? 200 : 120)),
+                openingType: removedOpening.openingType,
+              }],
+            }),
+            redo: async () => wallAPI.update(projectId, wallId, {
+              startX: Number(wallRaw.startX),
+              startY: Number(wallRaw.startY),
+              endX: Number(wallRaw.endX),
+              endY: Number(wallRaw.endY),
+              thickness: Number(wallRaw.thickness || 20),
+              wallType: wallRaw.wallType || 'internal',
+              roomId: wallRaw.roomId,
+              openings: updatedOpenings,
+            }),
+            undoError: 'Не удалось отменить удаление проёма',
+            redoError: 'Не удалось повторить удаление проёма',
+          });
+        }
+        const label = removedOpening?.openingType === 'door' ? 'Дверь' : 'Окно';
+        addToast(`${label} удалено`, 'info');
+        await loadSceneData();
+      } catch (e) {
+        setError('Не удалось удалить проём');
       }
     }
   }, [addToast, loadSceneData, projectId, pushHistoryAction]);
@@ -2824,7 +3076,9 @@ const FloorPlan3D = () => {
                   {cursorContext.roomName && (
                     <div><span className="cc-label">Комната: </span>{cursorContext.roomName}</div>
                   )}
-                  <div><span className="cc-label">Цепь: </span>{cursorContext.circuitName}</div>
+                  {cursorContext.circuitName && (
+                    <div><span className="cc-label">Цепь: </span>{cursorContext.circuitName}</div>
+                  )}
                   {cursorContext.nearestWallCm != null && (
                     <div><span className="cc-label">До стены: </span>{cursorContext.nearestWallCm} см</div>
                   )}
