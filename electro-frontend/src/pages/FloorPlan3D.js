@@ -40,6 +40,7 @@ const FloorPlan3D = () => {
   const routesGroupRef = useRef(null);
   const dragStateRef = useRef({ active: false, nodeIndex: -1 });
   const suppressClickRef = useRef(false);
+  const hoveredObjectRef = useRef(null);
   const historyRef = useRef({ undo: [], redo: [], applying: false });
 
   const [loading, setLoading] = useState(true);
@@ -392,7 +393,11 @@ const FloorPlan3D = () => {
       wallsGroupRef.current.add(wallMesh);
     });
 
+    const activeRoomForFilter = selectedRoomId ? sceneData.rooms.find((r) => r.id === selectedRoomId) : null;
+    const activeBoundsForFilter = activeRoomForFilter ? getRoomBounds(activeRoomForFilter, sceneData.walls) : null;
+
     sceneData.points.forEach((point) => {
+      if (selectedRoomId && point.roomId !== selectedRoomId) return;
       const x = toMeters(point.positionX);
       const z = toMeters(point.positionY);
       const y = Math.max(toMeters(point.heightFromFloor || 30), 0.05);
@@ -408,6 +413,22 @@ const FloorPlan3D = () => {
 
     sceneData.routes.forEach((route) => {
       if (!route.pathJson) return;
+      if (selectedRoomId && activeBoundsForFilter) {
+        try {
+          const firstNode = JSON.parse(route.pathJson)[0];
+          if (firstNode) {
+            const ptX = toMeters(firstNode.x);
+            const ptZ = toMeters(firstNode.y);
+            const inside = ptX >= activeBoundsForFilter.minX - 0.15
+              && ptX <= activeBoundsForFilter.maxX + 0.15
+              && ptZ >= activeBoundsForFilter.minZ - 0.15
+              && ptZ <= activeBoundsForFilter.maxZ + 0.15;
+            if (!inside) return;
+          }
+        } catch (e) {
+          return;
+        }
+      }
       try {
         const path = JSON.parse(route.pathJson);
         if (!Array.isArray(path) || path.length < 2) return;
@@ -559,6 +580,11 @@ const FloorPlan3D = () => {
   useEffect(() => {
     redrawScene();
   }, [redrawScene]);
+
+  useEffect(() => {
+    if (pointsGroupRef.current) pointsGroupRef.current.visible = insideRoomView;
+    if (routesGroupRef.current) routesGroupRef.current.visible = insideRoomView;
+  }, [insideRoomView]);
 
   const getGroundIntersection = (event) => {
     if (!rendererRef.current || !cameraRef.current || !mountRef.current || !sceneData.floorPlan) return null;
@@ -982,6 +1008,11 @@ const FloorPlan3D = () => {
     if (loading) return;
     setError('');
 
+    if (tool === 'delete') {
+      await deleteHoveredObject();
+      return;
+    }
+
     // Determine effective surface: hover takes priority over surfaceMode selector
     const effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
       ? hoveredWallFace
@@ -1171,6 +1202,7 @@ const FloorPlan3D = () => {
           ptHits[0].object.scale.setScalar(1.55);
           const pData = ptHits[0].object.userData.pointData;
           if (pData) {
+            hoveredObjectRef.current = { type: 'point', data: pData };
             const pRoom = sceneData.rooms.find((r) => r.id === pData.roomId);
             const pBounds = getRoomBounds(pRoom, sceneData.walls);
             const px = toMeters(pData.positionX);
@@ -1195,6 +1227,7 @@ const FloorPlan3D = () => {
               circuitName: pCircuit?.name || 'Без цепи',
               nearestWallCm,
               notes: pData.notes || '',
+              pointId: pData.id,
             };
           }
         }
@@ -1207,6 +1240,7 @@ const FloorPlan3D = () => {
         if (rtHits.length > 0) {
           const rData = rtHits[0].object.userData.routeData;
           if (rData) {
+            hoveredObjectRef.current = { type: 'route', data: rData };
             const rCircuit = circuits.find((c) => String(c.id) === String(rData.circuitId));
             objectContext = {
               isObject: true,
@@ -1218,10 +1252,13 @@ const FloorPlan3D = () => {
               nearestWallCm: null,
               notes: rData.notes || '',
               routeLength: rData.lengthM ? `${Number(rData.lengthM).toFixed(2)} м` : null,
+              routeId: rData.id,
             };
           }
         }
       }
+
+      if (!objectContext) hoveredObjectRef.current = null;
     }
 
     // If hovering an object, show object info and skip surface detection
@@ -1894,6 +1931,65 @@ const FloorPlan3D = () => {
     }
   }, [MAX_HISTORY_SIZE, loadSceneData]);
 
+  const deleteHoveredObject = useCallback(async () => {
+    const hovered = hoveredObjectRef.current;
+    if (!hovered) return;
+
+    if (hovered.type === 'point') {
+      const pointData = hovered.data;
+      const pointId = pointData.id;
+      try {
+        await electricalPointAPI.delete(projectId, pointId);
+        hoveredObjectRef.current = null;
+        setCursorContext(null);
+        pushHistoryAction({
+          undo: async () => electricalPointAPI.create(projectId, {
+            symbolType: pointData.symbolType,
+            powerConsumption: pointData.powerConsumption,
+            positionX: pointData.positionX,
+            positionY: pointData.positionY,
+            heightFromFloor: pointData.heightFromFloor,
+            roomId: pointData.roomId,
+            circuitId: pointData.circuitId,
+            installationScope: pointData.installationScope || 'PLANNED',
+            notes: pointData.notes,
+          }),
+          redo: async () => electricalPointAPI.delete(projectId, pointId),
+          undoError: 'Не удалось отменить удаление точки',
+          redoError: 'Не удалось повторить удаление точки',
+        });
+        addToast('Электрическая точка удалена', 'info');
+        await loadSceneData();
+      } catch (e) {
+        setError('Не удалось удалить электрическую точку');
+      }
+    } else if (hovered.type === 'route') {
+      const routeData = hovered.data;
+      const routeId = routeData.id;
+      try {
+        await cableRunAPI.delete(projectId, routeId);
+        hoveredObjectRef.current = null;
+        setCursorContext(null);
+        pushHistoryAction({
+          undo: async () => cableRunAPI.create(projectId, {
+            circuitId: routeData.circuitId || null,
+            lengthM: Number(routeData.lengthM || 0),
+            installationScope: routeData.installationScope || 'PLANNED',
+            pathJson: routeData.pathJson,
+            notes: routeData.notes || 'Трасса 3D',
+          }),
+          redo: async () => cableRunAPI.delete(projectId, routeId),
+          undoError: 'Не удалось отменить удаление трассы',
+          redoError: 'Не удалось повторить удаление трассы',
+        });
+        addToast('Трасса кабеля удалена', 'info');
+        await loadSceneData();
+      } catch (e) {
+        setError('Не удалось удалить трассу');
+      }
+    }
+  }, [addToast, loadSceneData, projectId, pushHistoryAction]);
+
   useEffect(() => {
     const onHistoryHotkeys = (event) => {
       const targetTag = event.target?.tagName;
@@ -1908,10 +2004,14 @@ const FloorPlan3D = () => {
         event.preventDefault();
         redoLastAction();
       }
+      if (event.key === 'Delete' && hoveredObjectRef.current) {
+        event.preventDefault();
+        deleteHoveredObject();
+      }
     };
     window.addEventListener('keydown', onHistoryHotkeys);
     return () => window.removeEventListener('keydown', onHistoryHotkeys);
-  }, [redoLastAction, undoLastAction]);
+  }, [deleteHoveredObject, redoLastAction, undoLastAction]);
 
   const saveRoute = async () => {
     if (routePointsRef.current.length < 2) {
@@ -2304,7 +2404,19 @@ const FloorPlan3D = () => {
                 <button className={tool === 'add-window' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-window')}>
                   Окно
                 </button>
+                <button
+                  className={tool === 'delete' ? 'tool-btn active' : 'tool-btn'}
+                  style={tool === 'delete' ? { borderColor: '#f87171', background: '#3b0f0f' } : {}}
+                  onClick={() => setTool('delete')}
+                >
+                  🗑 Удалить объект
+                </button>
               </div>
+              {tool === 'delete' && (
+                <div className="floor-plan-3d-tip" style={{ color: '#fca5a5', borderColor: '#7f1d1d', background: '#1c0a0a' }}>
+                  Наведите на точку или трассу и нажмите ЛКМ или клавишу Delete для удаления.
+                </div>
+              )}
               <div className="editor-field">
                 <label htmlFor="surfaceMode">Рабочая поверхность</label>
                 <select id="surfaceMode" value={surfaceMode} onChange={(e) => setSurfaceMode(e.target.value)}>
@@ -2703,39 +2815,41 @@ const FloorPlan3D = () => {
               {cursorContext.isObject ? (
                 <>
                   <div className="cursor-context-title">{cursorContext.objectType}</div>
-                  {cursorContext.roomName && <div><span className="cc-label">Комната:</span> {cursorContext.roomName}</div>}
-                  {cursorContext.placement && <div><span className="cc-label">Расположение:</span> {cursorContext.placement}</div>}
-                  {cursorContext.heightCm != null && <div><span className="cc-label">Высота от пола:</span> {cursorContext.heightCm} см</div>}
-                  {cursorContext.nearestWallCm != null && <div><span className="cc-label">До ближ. стены:</span> {cursorContext.nearestWallCm} см</div>}
-                  <div><span className="cc-label">Цепь:</span> {cursorContext.circuitName}</div>
-                  {cursorContext.routeLength && <div><span className="cc-label">Длина трассы:</span> {cursorContext.routeLength}</div>}
-                  {cursorContext.notes && <div><span className="cc-label">Примечание:</span> {cursorContext.notes}</div>}
+                  {cursorContext.placement && (
+                    <div><span className="cc-label">Размещение: </span>{cursorContext.placement}</div>
+                  )}
+                  {cursorContext.heightCm != null && (
+                    <div><span className="cc-label">Высота: </span>{cursorContext.heightCm} см</div>
+                  )}
+                  {cursorContext.roomName && (
+                    <div><span className="cc-label">Комната: </span>{cursorContext.roomName}</div>
+                  )}
+                  <div><span className="cc-label">Цепь: </span>{cursorContext.circuitName}</div>
+                  {cursorContext.nearestWallCm != null && (
+                    <div><span className="cc-label">До стены: </span>{cursorContext.nearestWallCm} см</div>
+                  )}
+                  {cursorContext.routeLength && (
+                    <div><span className="cc-label">Длина: </span>{cursorContext.routeLength}</div>
+                  )}
+                  {cursorContext.notes && (
+                    <div><span className="cc-label">Заметки: </span>{cursorContext.notes}</div>
+                  )}
+                  {tool === 'delete' && (
+                    <div style={{ color: '#f87171', marginTop: '0.25rem' }}>ЛКМ / Delete — удалить</div>
+                  )}
                 </>
               ) : (
                 <>
-                  <div><span className="cc-label">Поверхность:</span> {cursorContext.surface}</div>
-                  <div><span className="cc-label">Высота:</span> {cursorContext.heightCm} см</div>
-                  <div><span className="cc-label">Цепь:</span> {cursorContext.circuitName}</div>
-                  <div><span className="cc-label">До угла:</span> {cursorContext.nearestCornerM ?? '—'} м</div>
+                  <div><span className="cc-label">Поверхность: </span>{cursorContext.surface}</div>
+                  <div><span className="cc-label">Высота: </span>{cursorContext.heightCm} см</div>
+                  {cursorContext.circuitName && (
+                    <div><span className="cc-label">Цепь: </span>{cursorContext.circuitName}</div>
+                  )}
+                  {cursorContext.nearestCornerM != null && (
+                    <div><span className="cc-label">До угла: </span>{cursorContext.nearestCornerM} м</div>
+                  )}
                 </>
               )}
-            </div>
-          )}
-          {toasts.length > 0 && (
-            <div className="toast-container">
-              {toasts.map((toast) => (
-                <div key={toast.id} className={`toast toast-${toast.type}`}>
-                  <span className="toast-message">{toast.message}</span>
-                  <button
-                    type="button"
-                    className="toast-dismiss"
-                    onClick={() => dismissToast(toast.id)}
-                    aria-label="Закрыть"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
             </div>
           )}
           {loading && <div className="floor-plan-3d-overlay">Загрузка 3D-сцены...</div>}
