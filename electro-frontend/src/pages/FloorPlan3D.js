@@ -157,6 +157,8 @@ const FloorPlan3D = () => {
     if (face === 'south') return 'Южная стена';
     if (face === 'west') return 'Западная стена';
     if (face === 'east') return 'Восточная стена';
+    if (face === 'floor') return 'Пол';
+    if (face === 'ceiling') return 'Потолок';
     return 'Стена';
   }, []);
 
@@ -247,31 +249,37 @@ const FloorPlan3D = () => {
       wallsGroupRef.current.add(roomMesh);
 
       if (selectedRoomId === room.id) {
+        const floorHovered = hoveredWallFace === 'floor';
         const floorOverlay = new THREE.Mesh(
           new THREE.PlaneGeometry(width, depth),
           new THREE.MeshBasicMaterial({
-            color: surfaceMode === 'floor' ? 0x22d3ee : 0x1e293b,
+            color: floorHovered ? 0xf59e0b : (surfaceMode === 'floor' ? 0x22d3ee : 0x1e293b),
             transparent: true,
-            opacity: surfaceMode === 'floor' ? 0.34 : 0.14,
+            opacity: floorHovered ? 0.42 : (surfaceMode === 'floor' ? 0.34 : 0.14),
             side: THREE.DoubleSide,
           })
         );
         floorOverlay.rotation.x = -Math.PI / 2;
         floorOverlay.position.set(bounds.minX + width / 2, 0.015, bounds.minZ + depth / 2);
+        floorOverlay.userData = { wallFace: 'floor' };
         wallsGroupRef.current.add(floorOverlay);
+        wallHoverMeshesRef.current.push(floorOverlay);
 
+        const ceilingHovered = hoveredWallFace === 'ceiling';
         const ceilingOverlay = new THREE.Mesh(
           new THREE.PlaneGeometry(width, depth),
           new THREE.MeshBasicMaterial({
-            color: surfaceMode === 'ceiling' ? 0xfacc15 : 0x334155,
+            color: ceilingHovered ? 0xf59e0b : (surfaceMode === 'ceiling' ? 0xfacc15 : 0x334155),
             transparent: true,
-            opacity: surfaceMode === 'ceiling' ? 0.3 : 0.12,
+            opacity: ceilingHovered ? 0.42 : (surfaceMode === 'ceiling' ? 0.3 : 0.12),
             side: THREE.DoubleSide,
           })
         );
         ceilingOverlay.rotation.x = Math.PI / 2;
         ceilingOverlay.position.set(bounds.minX + width / 2, roomHeightM - 0.01, bounds.minZ + depth / 2);
+        ceilingOverlay.userData = { wallFace: 'ceiling' };
         wallsGroupRef.current.add(ceilingOverlay);
+        wallHoverMeshesRef.current.push(ceilingOverlay);
 
         const wallPlanes = [
           {
@@ -783,14 +791,14 @@ const FloorPlan3D = () => {
     return true;
   }, [insideRoomView, selectedRoomBounds]);
 
-  const snapPointToSurface = useCallback((point, preferredHeightCm = pointHeight) => {
+  const snapPointToSurface = useCallback((point, preferredHeightCm = pointHeight, effectiveSurface = surfaceMode) => {
     if (!point || !selectedRoomBounds) return null;
     const clampedX = Math.min(Math.max(point.x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M);
     const clampedZ = Math.min(Math.max(point.z, selectedRoomBounds.minZ + WALL_INSET_M), selectedRoomBounds.maxZ - WALL_INSET_M);
-    if (surfaceMode === 'floor') {
+    if (effectiveSurface === 'floor') {
       return new THREE.Vector3(clampedX, 0.05, clampedZ);
     }
-    if (surfaceMode === 'ceiling') {
+    if (effectiveSurface === 'ceiling') {
       return new THREE.Vector3(clampedX, activeRoomHeightM - 0.05, clampedZ);
     }
     return getWallSnapPointFromBounds(new THREE.Vector3(clampedX, 0, clampedZ), selectedRoomBounds, Math.max(toMeters(preferredHeightCm), 0.05));
@@ -965,7 +973,10 @@ const FloorPlan3D = () => {
           ? 'switch'
           : 'light';
       try {
-        const snappedSurfacePoint = snapPointToSurface(point, pointHeight);
+        const effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
+          ? hoveredWallFace
+          : surfaceMode;
+        const snappedSurfacePoint = snapPointToSurface(point, pointHeight, effectiveSurface);
         if (!snappedSurfacePoint || !isPointInsideBounds(snappedSurfacePoint, selectedRoomBounds)) {
           setError('Не удалось привязать точку к выбранной поверхности комнаты.');
           return;
@@ -977,7 +988,7 @@ const FloorPlan3D = () => {
           positionY: Number(toCentimeters(snappedSurfacePoint.z).toFixed(2)),
           heightFromFloor: Number(
             tool === 'add-source'
-              ? (surfaceMode === 'ceiling' ? 260 : surfaceMode === 'floor' ? 20 : Math.max(pointHeight, 120))
+              ? (effectiveSurface === 'ceiling' ? 260 : effectiveSurface === 'floor' ? 20 : Math.max(pointHeight, 120))
               : Number(toCentimeters(snappedSurfacePoint.y).toFixed(0))
           ),
           ...(selectedRoomId ? { roomId: selectedRoomId } : {}),
@@ -1016,7 +1027,10 @@ const FloorPlan3D = () => {
     }
 
     if (tool === 'draw-route') {
-      let snapped = snapPointToSurface(point, getRouteModeHeight());
+      const routeEffectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
+        ? hoveredWallFace
+        : surfaceMode;
+      let snapped = snapPointToSurface(point, getRouteModeHeight(), routeEffectiveSurface);
       if (!snapped) return;
       if (!isPointInsideBounds(snapped, selectedRoomBounds)) {
         setError('Узел трассы должен находиться в пределах выбранной комнаты.');
@@ -1057,7 +1071,7 @@ const FloorPlan3D = () => {
       });
     }
 
-    const hoveredFace = surfaceMode === 'wall' ? getPointerWallFace(event) : null;
+    const hoveredFace = getPointerWallFace(event);
     if (hoveredFace !== hoveredWallFace) {
       setHoveredWallFace(hoveredFace);
     }
@@ -1066,19 +1080,23 @@ const FloorPlan3D = () => {
       let contextPoint = null;
       let surfaceLabel = 'Пол';
 
-      if (surfaceMode === 'wall') {
+      if (hoveredFace === 'floor') {
+        const groundHit = getGroundIntersection(event);
+        if (groundHit && isPointInsideBounds(groundHit, selectedRoomBounds)) {
+          contextPoint = new THREE.Vector3(groundHit.x, 0.05, groundHit.z);
+          surfaceLabel = 'Пол';
+        }
+      } else if (hoveredFace === 'ceiling') {
+        const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
+        if (ceilingHit && isPointInsideBounds(ceilingHit, selectedRoomBounds)) {
+          contextPoint = new THREE.Vector3(ceilingHit.x, activeRoomHeightM - 0.05, ceilingHit.z);
+          surfaceLabel = 'Потолок';
+        }
+      } else if (hoveredFace) {
         const wallHit = getPointerWallHit(event);
         if (wallHit?.point) {
           contextPoint = wallHit.point;
-          if (wallHit.wallFace) {
-            surfaceLabel = getWallFaceLabel(wallHit.wallFace);
-          } else if (hoveredFace) {
-            surfaceLabel = getWallFaceLabel(hoveredFace);
-          } else if (wallFaceMode !== 'auto') {
-            surfaceLabel = getWallFaceLabel(wallFaceMode);
-          } else {
-            surfaceLabel = 'Стена (авто)';
-          }
+          surfaceLabel = getWallFaceLabel(hoveredFace);
         }
       } else if (surfaceMode === 'ceiling') {
         const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
@@ -1086,13 +1104,25 @@ const FloorPlan3D = () => {
           contextPoint = new THREE.Vector3(ceilingHit.x, activeRoomHeightM - 0.05, ceilingHit.z);
           surfaceLabel = 'Потолок';
         }
-      } else {
+      } else if (surfaceMode === 'floor') {
         const groundHit = getGroundIntersection(event);
         if (groundHit) {
           const snapped = snapPointToSurface(groundHit, pointHeight);
           if (snapped) {
             contextPoint = snapped;
             surfaceLabel = 'Пол';
+          }
+        }
+      } else {
+        const wallHit = getPointerWallHit(event);
+        if (wallHit?.point) {
+          contextPoint = wallHit.point;
+          if (wallHit.wallFace) {
+            surfaceLabel = getWallFaceLabel(wallHit.wallFace);
+          } else if (wallFaceMode !== 'auto') {
+            surfaceLabel = getWallFaceLabel(wallFaceMode);
+          } else {
+            surfaceLabel = 'Стена (авто)';
           }
         }
       }
@@ -1187,9 +1217,6 @@ const FloorPlan3D = () => {
     cameraRef.current.position.set(centerX, viewHeightM + 3, centerZ + 0.01);
     controlsRef.current.update();
     setInsideRoomView(false);
-    setSurfaceMode('floor');
-    setRoutePlacementMode('floor');
-    setRouteHeight((prev) => (prev || 10));
   }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
 
   const setCameraToWallPlane = useCallback((roomId, face = wallViewFace) => {
@@ -1231,9 +1258,6 @@ const FloorPlan3D = () => {
     controlsRef.current.target.set(targetX, targetHeight, targetZ);
     controlsRef.current.update();
     setInsideRoomView(true);
-    setSurfaceMode('wall');
-    setRoutePlacementMode('wall');
-    setRouteHeight((prev) => (prev || 120));
     setWallFaceMode(face === 'auto' ? 'auto' : face);
   }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls, wallViewFace]);
 
@@ -1249,9 +1273,6 @@ const FloorPlan3D = () => {
     cameraRef.current.position.set(centerX + 0.01, viewHeightM + 1.2, centerZ + 0.6);
     controlsRef.current.update();
     setInsideRoomView(false);
-    setSurfaceMode('ceiling');
-    setRoutePlacementMode('ceiling');
-    setRouteHeight((prev) => (prev || 260));
   }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
 
   useEffect(() => {
