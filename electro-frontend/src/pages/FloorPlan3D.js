@@ -1030,39 +1030,68 @@ const FloorPlan3D = () => {
       routesGroupRef.current.remove(routeDraftBadLineRef.current);
       routeDraftBadLineRef.current = null;
     }
-    routeHandleMeshesRef.current.forEach((mesh) => {
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) mesh.material.dispose();
-      routesGroupRef.current.remove(mesh);
+    routeHandleMeshesRef.current.forEach((hitMesh) => {
+      const grp = hitMesh.parent && hitMesh.parent !== routesGroupRef.current
+        ? hitMesh.parent
+        : hitMesh;
+      grp.traverse((child) => {
+        if (child.isMesh) {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        }
+      });
+      routesGroupRef.current.remove(grp);
     });
     routeHandleMeshesRef.current = [];
     setRoutePointCount(routePointsRef.current.length);
-    if (routePointsRef.current.length < 2) return;
-    const geometry = new THREE.BufferGeometry().setFromPoints(routePointsRef.current);
-    const material = new THREE.LineDashedMaterial({
-      color: 0x38bdf8,
-      dashSize: 0.2,
-      gapSize: 0.1,
-    });
-    const line = new THREE.Line(geometry, material);
-    line.computeLineDistances();
-    routeDraftLineRef.current = line;
-    routesGroupRef.current.add(line);
-    let sum = 0;
-    for (let i = 1; i < routePointsRef.current.length; i += 1) {
-      sum += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
+
+    if (routePointsRef.current.length >= 2) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(routePointsRef.current);
+      const material = new THREE.LineDashedMaterial({
+        color: 0x38bdf8,
+        dashSize: 0.2,
+        gapSize: 0.1,
+      });
+      const line = new THREE.Line(geometry, material);
+      line.computeLineDistances();
+      routeDraftLineRef.current = line;
+      routesGroupRef.current.add(line);
+      let sum = 0;
+      for (let i = 1; i < routePointsRef.current.length; i += 1) {
+        sum += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
+      }
+      setRouteDraftLength(Number(sum.toFixed(2)));
     }
-    setRouteDraftLength(Number(sum.toFixed(2)));
 
     routePointsRef.current.forEach((p, idx) => {
-      const handleGeometry = new THREE.SphereGeometry(0.08, 16, 16);
       const selected = dragStateRef.current.active && dragStateRef.current.nodeIndex === idx;
-      const handleMaterial = new THREE.MeshStandardMaterial({ color: selected ? 0xf97316 : 0x22d3ee });
-      const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-      handle.position.copy(p);
-      handle.userData = { routeHandleIndex: idx };
-      routesGroupRef.current.add(handle);
-      routeHandleMeshesRef.current.push(handle);
+      const isFirst = idx === 0;
+      const isLast = idx === routePointsRef.current.length - 1;
+      const coreColor = selected ? 0xf97316 : isFirst ? 0x22d3ee : isLast ? 0x34d399 : 0x67e8f9;
+      const ringColor = selected ? 0xfbbf24 : 0x0ea5e9;
+
+      const handleGroup = new THREE.Group();
+      handleGroup.position.copy(p);
+
+      const coreMat = new THREE.MeshStandardMaterial({ color: coreColor, roughness: 0.3, metalness: 0.5 });
+      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), coreMat);
+      handleGroup.add(core);
+
+      const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, roughness: 0.4, metalness: 0.3 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.012, 4, 16), ringMat);
+      ring.rotation.x = Math.PI / 2;
+      handleGroup.add(ring);
+
+      // Invisible hit sphere for raycasting
+      const hitMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      );
+      hitMesh.userData = { routeHandleIndex: idx, routeHandlePos: p.clone() };
+      handleGroup.add(hitMesh);
+
+      routesGroupRef.current.add(handleGroup);
+      routeHandleMeshesRef.current.push(hitMesh);
     });
   }, []);
 
@@ -1254,10 +1283,12 @@ const FloorPlan3D = () => {
     if (dy > dx && dy > dz) {
       return new THREE.Vector3(prev.x, nextPoint.y, prev.z);
     }
+    // Preserve nextPoint.y (set by snapPointToSurface) so floor/ceiling height
+    // is not overridden when the dominant displacement is horizontal.
     if (dx > dz) {
-      return new THREE.Vector3(nextPoint.x, prev.y, prev.z);
+      return new THREE.Vector3(nextPoint.x, nextPoint.y, prev.z);
     }
-    return new THREE.Vector3(prev.x, prev.y, nextPoint.z);
+    return new THREE.Vector3(prev.x, nextPoint.y, nextPoint.z);
   };
 
   const validateRouteDraft = useCallback(() => {
@@ -1294,20 +1325,20 @@ const FloorPlan3D = () => {
       const start = nodes[0];
       const end = nodes[nodes.length - 1];
       if (!start.pointId) {
-        messages.push('Начало трассы должно быть привязано к электрической точке.');
+        messages.push('Начало трассы должно быть привязано к электрической точке — подведите первый узел ближе к розетке, выключателю или точке старта (до 35 см).');
       }
       if (!end.pointId) {
-        messages.push('Конец трассы должен быть привязан к электрической точке.');
+        messages.push('Конец трассы должен быть привязан к электрической точке — подведите последний узел ближе к розетке, выключателю или точке старта (до 35 см).');
       }
       if ((start.symbolType === 'switch' && end.symbolType === 'outlet')
         || (start.symbolType === 'outlet' && end.symbolType === 'switch')) {
-        messages.push('Прямая трасса между выключателем и розеткой запрещена.');
+        messages.push('Прямая трасса между выключателем и розеткой запрещена — добавьте промежуточный узел.');
       }
       if (start.symbolType === 'switch' && end.symbolType === 'switch') {
-        messages.push('Трасса не может начинаться и заканчиваться на выключателе.');
+        messages.push('Трасса не может начинаться и заканчиваться на выключателях.');
       }
       if (start.pointId && end.pointId && !selectedCircuitId) {
-        messages.push('Выберите электрическую цепь для трассы между привязанными точками.');
+        messages.push('Оба конца привязаны к точкам — выберите электрическую цепь в списке выше перед сохранением.');
       }
     }
 
@@ -1661,8 +1692,37 @@ const FloorPlan3D = () => {
       const objRay = new THREE.Raycaster();
       objRay.setFromCamera(objMouse, cameraRef.current);
 
+      // Check draft route handles (active during draw-route tool)
+      if (tool === 'draw-route' && routeHandleMeshesRef.current.length > 0) {
+        const hdHits = objRay.intersectObjects(routeHandleMeshesRef.current, false);
+        if (hdHits.length > 0) {
+          const hdData = hdHits[0].object.userData;
+          const hdIdx = hdData.routeHandleIndex;
+          if (typeof hdIdx === 'number') {
+            const hdPos = hdData.routeHandlePos || routePointsRef.current[hdIdx];
+            const hx = hdPos ? Number(toCentimeters(hdPos.x).toFixed(0)) : '—';
+            const hy = hdPos ? Number(toCentimeters(hdPos.y).toFixed(0)) : '—';
+            const hz = hdPos ? Number(toCentimeters(hdPos.z).toFixed(0)) : '—';
+            const isFirst = hdIdx === 0;
+            const isLast = hdIdx === routePointsRef.current.length - 1;
+            const nodeLabel = isFirst ? 'Начало трассы' : isLast ? 'Конец трассы' : `Узел трассы #${hdIdx + 1}`;
+            objectContext = {
+              isObject: true,
+              objectType: nodeLabel,
+              placement: `X: ${hx} см, Z: ${hz} см`,
+              heightCm: hy,
+              roomName: null,
+              circuitName: null,
+              nearestWallCm: null,
+              notes: 'Перетащите, чтобы переместить',
+            };
+            hoveredObjectRef.current = { type: 'routeHandle', index: hdIdx };
+          }
+        }
+      }
+
       // Check electrical points (only inside room view)
-      if (insideRoomView && pointHoverMeshesRef.current.length > 0) {
+      if (!objectContext && insideRoomView && pointHoverMeshesRef.current.length > 0) {
         const ptHits = objRay.intersectObjects(pointHoverMeshesRef.current, false);
         if (ptHits.length > 0) {
           const hitObj = ptHits[0].object;
@@ -2623,6 +2683,7 @@ const FloorPlan3D = () => {
       };
       const createdRoute = await cableRunAPI.create(projectId, routePayload);
       const createdRouteId = createdRoute?.data?.id;
+      setStats((prev) => ({ ...prev, routes: prev.routes + 1 }));
       if (createdRouteId) {
         let activeRouteId = createdRouteId;
         pushHistoryAction({
@@ -2639,8 +2700,11 @@ const FloorPlan3D = () => {
       clearRouteDraft();
       setNewRouteName('');
       setError('');
+      addToast('Трасса сохранена. Можно прокладывать следующую — просто кликайте на сцене.', 'success');
     } catch (e) {
-      setError(e?.response?.data?.message || 'Не удалось сохранить трассу кабеля');
+      const msg = e?.response?.data?.message || 'Не удалось сохранить трассу кабеля';
+      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -2711,8 +2775,11 @@ const FloorPlan3D = () => {
       setError('');
       await loadSceneData();
       clearRouteDraft();
+      addToast('Трасса обновлена. Черновик очищен — можно прокладывать следующую.', 'success');
     } catch (e) {
-      setError(e?.response?.data?.message || 'Не удалось обновить трассу');
+      const msg = e?.response?.data?.message || 'Не удалось обновить трассу кабеля';
+      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -3111,26 +3178,36 @@ const FloorPlan3D = () => {
                 </select>
               </div>
               <div className="floor-plan-3d-tip">
-                Логика разводки: 1) поставьте "Точку старта линии" на стене/потолке, 2) проложите трассы от нее, 3) на концах трасс ставьте розетки.
+                <strong>Логика разводки:</strong> 1) поставьте «Точку старта» на стене/потолке, 2) проложите трассы от неё — клик рядом со старт-точкой прицепит маршрут к ней, 3) завершите трассу у розетки или другой точки. После сохранения черновик очищается — начинайте следующую трассу сразу.
               </div>
 
               <div className="route-actions">
-                <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0}>
-                  Сохранить трассу
+                <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0} title="Сохранить текущий черновик в базу и очистить для новой трассы">
+                  ✓ Сохранить и начать новую
                 </button>
-                <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0}>
+                <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0} title="Заменить уже сохранённую трассу текущим черновиком">
                   Обновить выбранную
                 </button>
                 <button type="button" className="btn-secondary" onClick={removeLastNode} disabled={routePointCount === 0}>
                   ← Удалить последний узел
                 </button>
-                <button type="button" className="btn-secondary" onClick={clearRouteDraft}>
-                  Очистить черновик
+                <button type="button" className="btn-secondary" onClick={clearRouteDraft} title="Отменить черновик без сохранения">
+                  Сбросить черновик
                 </button>
                 <button type="button" className="btn-secondary" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>
                   Удалить выбранную
                 </button>
               </div>
+              {routeValidationMessages.length > 0 && (
+                <div className="route-validation-messages">
+                  <strong>Что нужно исправить:</strong>
+                  <ul>
+                    {routeValidationMessages.map((msg) => (
+                      <li key={msg}>{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {routeNodesRef.current.length > 0 && (
                 <div className="route-node-editor">
@@ -3292,15 +3369,6 @@ const FloorPlan3D = () => {
                   ))}
                 </ul>
               </div>
-              {routeValidationMessages.length > 0 && (
-                <div className="floor-plan-3d-tip floor-plan-3d-error">
-                  <ul className="validation-list">
-                    {routeValidationMessages.map((msg) => (
-                      <li key={msg}>{msg}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
               {error && <div className="floor-plan-3d-tip floor-plan-3d-error">{error}</div>}
             </>
           )}

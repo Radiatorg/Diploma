@@ -240,7 +240,7 @@ public class CableRunService {
             totalLengthCm = totalLengthCm.add(segmentLengthCm);
         }
 
-        validateRouteEndpointsNearElectricalPoints(floorPlan, nodes, pointsById);
+        validateRouteEndpointsNearElectricalPoints(floorPlan, nodes);
         validateEndpointPointTypes(nodes, pointsById);
         validateCircuitCompatibility(nodes, pointsById, selectedCircuit);
         validateRouteDoesNotCrossOpenings(floorPlan, nodes);
@@ -265,22 +265,24 @@ public class CableRunService {
         }
     }
 
-    private void validateRouteEndpointsNearElectricalPoints(FloorPlan floorPlan, List<PointCm> nodes, Map<Long, ElectricalPoint> pointsById) {
+    private void validateRouteEndpointsNearElectricalPoints(FloorPlan floorPlan, List<PointCm> nodes) {
         List<ElectricalPoint> points = electricalPointRepository.findByFloorPlanId(floorPlan.getId());
         if (points.isEmpty()) {
-            throw new BadRequestException("Нельзя сохранить трассу без электрических точек на плане.");
+            throw new BadRequestException("Нельзя сохранить трассу: на плане нет электрических точек. Сначала расставьте розетки, выключатели или точки старта.");
         }
-
         PointCm start = nodes.get(0);
         PointCm end = nodes.get(nodes.size() - 1);
-
-        BigDecimal minStartDistance = minDistanceToAnyPoint(start, points);
-        BigDecimal minEndDistance = minDistanceToAnyPoint(end, points);
-        if (minStartDistance.compareTo(ENDPOINT_SNAP_TOLERANCE_CM) > 0) {
-            throw new BadRequestException("Начало трассы должно быть привязано к электрической точке (до 35 см).");
+        BigDecimal minStart = minDistanceToAnyPoint(start, points);
+        BigDecimal minEnd = minDistanceToAnyPoint(end, points);
+        if (minStart.compareTo(ENDPOINT_SNAP_TOLERANCE_CM) > 0) {
+            throw new BadRequestException(String.format(
+                    "Начало трассы слишком далеко от ближайшей электрической точки (%.0f см). Переместите первый узел ближе к розетке, выключателю или точке старта (не далее %d см).",
+                    minStart.doubleValue(), ENDPOINT_SNAP_TOLERANCE_CM.intValue()));
         }
-        if (minEndDistance.compareTo(ENDPOINT_SNAP_TOLERANCE_CM) > 0) {
-            throw new BadRequestException("Конец трассы должен быть привязан к электрической точке (до 35 см).");
+        if (minEnd.compareTo(ENDPOINT_SNAP_TOLERANCE_CM) > 0) {
+            throw new BadRequestException(String.format(
+                    "Конец трассы слишком далеко от ближайшей электрической точки (%.0f см). Переместите последний узел ближе к розетке, выключателю или точке старта (не далее %d см).",
+                    minEnd.doubleValue(), ENDPOINT_SNAP_TOLERANCE_CM.intValue()));
         }
     }
 
@@ -342,7 +344,9 @@ public class CableRunService {
 
         if (selectedCircuit == null) {
             if (startCircuit != null && endCircuit != null && startCircuit.getId().equals(endCircuit.getId())) {
-                throw new BadRequestException("Для трассы между точками одной цепи необходимо явно выбрать эту цепь.");
+                throw new BadRequestException(
+                        "Оба конца трассы принадлежат цепи «" + startCircuit.getName() + "». " +
+                        "Выберите эту цепь в поле «Электрическая цепь» перед сохранением.");
             }
             return;
         }
