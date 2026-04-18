@@ -13,258 +13,18 @@ import {
   savedSpecificationAPI,
   wallAPI,
 } from '../api/api';
+import FloorPlan3DSidebar from './FloorPlan3DSidebar';
+import { useFloorPlanHistory } from './floorPlan3D/useFloorPlanHistory';
+import { useRouteDraft } from './floorPlan3D/useRouteDraft';
+import {
+  DEFAULT_ROOM_HEIGHT_M,
+  buildGhostGroup,
+  buildPointGroup,
+  buildDoorGroup,
+  buildWindowGroup,
+  isSourcePointByNotes,
+} from './floorPlan3D/builders3D';
 import './FloorPlan3D.css';
-
-const DEFAULT_ROOM_HEIGHT_M = 2.8;
-
-// ─── 3D model builder helpers ───────────────────────────────────────────────
-
-function buildOutletGroup(accentColor) {
-  const group = new THREE.Group();
-  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
-  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
-  const holeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
-
-  const border = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), borderMat);
-  border.position.z = -0.004;
-  group.add(border);
-
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.024), plateMat);
-  group.add(plate);
-
-  [-0.026, 0.026].forEach((ox) => {
-    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 8), holeMat);
-    pin.rotation.x = Math.PI / 2;
-    pin.position.set(ox, 0.015, 0.001);
-    group.add(pin);
-  });
-
-  const gnd = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.03, 8), holeMat);
-  gnd.rotation.x = Math.PI / 2;
-  gnd.position.set(0, -0.021, 0.001);
-  group.add(gnd);
-
-  return group;
-}
-
-function buildSwitchGroup(accentColor) {
-  const group = new THREE.Group();
-  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf0ede8, roughness: 0.8 });
-  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
-  const rockerMat = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.5 });
-
-  const border = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.018), borderMat);
-  border.position.z = -0.004;
-  group.add(border);
-
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.024), plateMat);
-  group.add(plate);
-
-  const rocker = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.1, 0.028), rockerMat);
-  rocker.rotation.x = -0.18;
-  group.add(rocker);
-
-  const notchMat = new THREE.MeshStandardMaterial({ color: 0xaabbcc });
-  const notch = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.006, 0.012), notchMat);
-  notch.position.set(0, 0.02, 0.017);
-  group.add(notch);
-
-  return group;
-}
-
-function buildLightGroup(accentColor) {
-  const group = new THREE.Group();
-
-  const mountMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5, metalness: 0.45 });
-  const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.085, 0.025, 16), mountMat);
-  mount.position.y = 0.01;
-  group.add(mount);
-
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xb8960c, roughness: 0.4, metalness: 0.6 });
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.008, 6, 24), rimMat);
-  rim.rotation.x = Math.PI / 2;
-  group.add(rim);
-
-  const cordMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), cordMat);
-  cord.position.y = -0.067;
-  group.add(cord);
-
-  const socketMat = new THREE.MeshStandardMaterial({ color: 0x888877, roughness: 0.6 });
-  const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.04, 10), socketMat);
-  socket.position.y = -0.14;
-  group.add(socket);
-
-  const bulbMat = new THREE.MeshStandardMaterial({
-    color: 0xfffde7,
-    emissive: 0xffee66,
-    emissiveIntensity: 0.9,
-    roughness: 0.2,
-    transparent: true,
-    opacity: 0.92,
-  });
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 12), bulbMat);
-  bulb.position.y = -0.195;
-  group.add(bulb);
-
-  return group;
-}
-
-function buildSourceGroup() {
-  const group = new THREE.Group();
-
-  const boxMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.65, metalness: 0.35 });
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.15, 0.045), boxMat);
-  group.add(box);
-
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.7 });
-  const innerDoor = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.006), doorMat);
-  innerDoor.position.set(-0.005, -0.005, 0.026);
-  group.add(innerDoor);
-
-  const handleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af });
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.025, 6), handleMat);
-  handle.rotation.z = Math.PI / 2;
-  handle.position.set(0.028, -0.005, 0.03);
-  group.add(handle);
-
-  const ledMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 1.2 });
-  const led = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 8), ledMat);
-  led.position.set(0.03, 0.055, 0.027);
-  group.add(led);
-
-  return group;
-}
-
-function isSourcePointByNotes(point) {
-  const notes = (point?.notes || '').toLowerCase();
-  return notes.includes('стартов') || notes.includes('start');
-}
-
-function buildPointGroup(point) {
-  const type = point?.electricalSymbol?.type || '';
-  const isSource = isSourcePointByNotes(point);
-  if (type === 'outlet') return buildOutletGroup(0x10b981);
-  if (type === 'switch') return buildSwitchGroup(0x60a5fa);
-  if (type === 'light' && !isSource) return buildLightGroup(0xffc857);
-  return buildSourceGroup();
-}
-
-function buildGhostGroup(toolType) {
-  let group;
-  if (toolType === 'add-outlet') group = buildOutletGroup(0x34d399);
-  else if (toolType === 'add-switch') group = buildSwitchGroup(0x93c5fd);
-  else if (toolType === 'add-light') group = buildLightGroup(0xfde68a);
-  else group = buildSourceGroup();
-  group.traverse((child) => {
-    if (child.isMesh && child.material) {
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      mats.forEach((mat) => {
-        mat.transparent = true;
-        mat.opacity = 0.48;
-        mat.depthWrite = false;
-      });
-    }
-  });
-  return group;
-}
-
-function buildDoorGroup(oWidthM, oHeightM, wallThickness) {
-  const group = new THREE.Group();
-  const depth = wallThickness + 0.06;
-  const jambW = 0.065;
-  const lintH = 0.075;
-
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0xe8ddd0, roughness: 0.75 });
-  const lJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, oHeightM + lintH, depth), frameMat);
-  lJamb.position.set(-oWidthM / 2 - jambW / 2, lintH / 2, 0);
-  group.add(lJamb);
-
-  const rJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, oHeightM + lintH, depth), frameMat);
-  rJamb.position.set(oWidthM / 2 + jambW / 2, lintH / 2, 0);
-  group.add(rJamb);
-
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + jambW * 2, lintH, depth), frameMat);
-  lintel.position.set(0, oHeightM / 2 + lintH / 2, 0);
-  group.add(lintel);
-
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0xc8935a, roughness: 0.65, transparent: true, opacity: 0.92 });
-  const leaf = new THREE.Mesh(new THREE.BoxGeometry(oWidthM - 0.03, oHeightM - 0.015, 0.045), leafMat);
-  group.add(leaf);
-
-  const panelMat = new THREE.MeshStandardMaterial({ color: 0xb5824a, roughness: 0.7 });
-  [
-    [0, oHeightM * 0.22, 0.025],
-    [0, -oHeightM * 0.22, 0.025],
-  ].forEach(([px, py, pz]) => {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(oWidthM * 0.7, oHeightM * 0.28, 0.008), panelMat);
-    panel.position.set(px, py, pz);
-    group.add(panel);
-  });
-
-  const handleMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
-  const handleBar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.11, 8), handleMat);
-  handleBar.rotation.x = Math.PI / 2;
-  handleBar.position.set(oWidthM / 2 - 0.09, -oHeightM * 0.05, 0.03);
-  group.add(handleBar);
-
-  const handleStem = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.04, 8), handleMat);
-  handleStem.position.set(oWidthM / 2 - 0.09, -oHeightM * 0.05, 0.05);
-  group.add(handleStem);
-
-  const arcMat = new THREE.MeshStandardMaterial({ color: 0xf97316, transparent: true, opacity: 0.35, roughness: 0.8 });
-  const arc = new THREE.Mesh(new THREE.TorusGeometry(oWidthM * 0.85, 0.012, 4, 20, Math.PI / 2), arcMat);
-  arc.rotation.x = Math.PI / 2;
-  arc.position.set(-oWidthM / 2, -oHeightM / 2, 0);
-  group.add(arc);
-
-  return group;
-}
-
-function buildWindowGroup(oWidthM, oHeightM, wallThickness) {
-  const group = new THREE.Group();
-  const depth = wallThickness + 0.06;
-  const frameW = 0.06;
-
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.7 });
-
-  const top = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + frameW * 2, frameW, depth), frameMat);
-  top.position.set(0, oHeightM / 2 + frameW / 2, 0);
-  group.add(top);
-
-  const bot = new THREE.Mesh(new THREE.BoxGeometry(oWidthM + frameW * 2, frameW, depth), frameMat);
-  bot.position.set(0, -oHeightM / 2 - frameW / 2, 0);
-  group.add(bot);
-
-  const lSide = new THREE.Mesh(new THREE.BoxGeometry(frameW, oHeightM + frameW * 2, depth), frameMat);
-  lSide.position.set(-oWidthM / 2 - frameW / 2, 0, 0);
-  group.add(lSide);
-
-  const rSide = new THREE.Mesh(new THREE.BoxGeometry(frameW, oHeightM + frameW * 2, depth), frameMat);
-  rSide.position.set(oWidthM / 2 + frameW / 2, 0, 0);
-  group.add(rSide);
-
-  const glassMat = new THREE.MeshStandardMaterial({
-    color: 0xbfdbfe,
-    transparent: true,
-    opacity: 0.38,
-    roughness: 0.05,
-    metalness: 0.1,
-  });
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(oWidthM - 0.01, oHeightM - 0.01, 0.008), glassMat);
-  group.add(glass);
-
-  const mullionMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
-  const vMullion = new THREE.Mesh(new THREE.BoxGeometry(0.04, oHeightM, depth * 0.6), mullionMat);
-  group.add(vMullion);
-
-  const hMullion = new THREE.Mesh(new THREE.BoxGeometry(oWidthM, 0.04, depth * 0.6), mullionMat);
-  group.add(hMullion);
-
-  return group;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 const FloorPlan3D = () => {
   const { projectId } = useParams();
@@ -275,27 +35,20 @@ const FloorPlan3D = () => {
   const rendererRef = useRef(null);
   const controlsRef = useRef(null);
   const frameRef = useRef(null);
-  const routeDraftLineRef = useRef(null);
-  const routeDraftBadLineRef = useRef(null);
-  const routeHandleMeshesRef = useRef([]);
   const wallHoverMeshesRef = useRef([]);
   const pointHoverMeshesRef = useRef([]);
   const routeHoverLinesRef = useRef([]);
   const routeHitMeshesRef = useRef([]);
   const hoveredRouteLineRef = useRef(null);
   const openingHoverMeshesRef = useRef([]);
-  const routePointsRef = useRef([]);
-  const routeNodesRef = useRef([]);
   const metaGroupRef = useRef(null);
   const wallsGroupRef = useRef(null);
   const ghostGroupRef = useRef(null);
   const pointsGroupRef = useRef(null);
   const routesGroupRef = useRef(null);
-  const dragStateRef = useRef({ active: false, nodeIndex: -1 });
   const suppressClickRef = useRef(false);
   const hoveredObjectRef = useRef(null);
   const mouseDownPosRef = useRef(null);
-  const historyRef = useRef({ undo: [], redo: [], applying: false });
 
   const [loading, setLoading] = useState(true);
   const [sceneData, setSceneData] = useState({
@@ -307,13 +60,6 @@ const FloorPlan3D = () => {
   });
   const [tool, setTool] = useState('navigate');
   const [pointHeight, setPointHeight] = useState(30);
-  const [routeHeight, setRouteHeight] = useState(30);
-  const [routePlacementMode, setRoutePlacementMode] = useState('wall');
-  const [newRouteName, setNewRouteName] = useState('');
-  const [routeDraftLength, setRouteDraftLength] = useState(0);
-  const [routePointCount, setRoutePointCount] = useState(0);
-  const [routeValidationMessages, setRouteValidationMessages] = useState([]);
-  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [circuits, setCircuits] = useState([]);
   const [selectedCircuitId, setSelectedCircuitId] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -332,7 +78,6 @@ const FloorPlan3D = () => {
   const [hoveredWallFace, setHoveredWallFace] = useState(null);
   const [cursorContext, setCursorContext] = useState(null);
   const [cursorPanel, setCursorPanel] = useState({ x: 0, y: 0, visible: false });
-  const [historyVersion, setHistoryVersion] = useState(0);
   const [showAutoPlaceDialog, setShowAutoPlaceDialog] = useState(false);
   const [roomWidthCm, setRoomWidthCm] = useState(null);
   const [roomLengthCm, setRoomLengthCm] = useState(null);
@@ -353,12 +98,9 @@ const FloorPlan3D = () => {
   const toMeters = (value) => Number(value || 0) / 100;
   const toCentimeters = (value) => Number(value || 0) * 100;
   const SNAP_RADIUS_M = 0.35;
-  const MIN_SEGMENT_M = 0.05;
-  const ORTHOGONAL_TOLERANCE_M = 0.01;
   const WALL_INSET_M = 0.03;
   const ROOM_HEIGHT_M = DEFAULT_ROOM_HEIGHT_M;
   const activeRoomHeightM = selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M;
-  const MAX_HISTORY_SIZE = 40;
 
   const getRoomBounds = useCallback((room, walls = sceneData.walls) => {
     if (!room) return null;
@@ -398,16 +140,6 @@ const FloorPlan3D = () => {
       groupRef.current.remove(child);
     }
   };
-
-  const pushHistoryAction = useCallback((action) => {
-    if (!action || historyRef.current.applying) return;
-    historyRef.current.undo.push(action);
-    if (historyRef.current.undo.length > MAX_HISTORY_SIZE) {
-      historyRef.current.undo.shift();
-    }
-    historyRef.current.redo = [];
-    setHistoryVersion((v) => v + 1);
-  }, [MAX_HISTORY_SIZE]);
 
   const getWallFaceLabel = useCallback((face) => {
     if (face === 'north') return 'Северная стена';
@@ -481,56 +213,6 @@ const FloorPlan3D = () => {
     }
     g.add(ghost);
   }, [clearGhostPreview]);
-
-  const getRouteModeWarning = useCallback(() => {
-    if (routePlacementMode === 'ceiling' && routeHeight < 240) {
-      return 'ТКП: для потолочной прокладки задайте высоту не ниже 240 см.';
-    }
-    if (routePlacementMode === 'floor' && routeHeight > 20) {
-      return 'ТКП: для напольной прокладки задайте высоту не выше 20 см.';
-    }
-    if (routePlacementMode === 'wall' && (routeHeight < 10 || routeHeight > 260)) {
-      return 'ТКП: для стеновой прокладки рекомендован диапазон 10..260 см.';
-    }
-    return '';
-  }, [routeHeight, routePlacementMode]);
-
-  const getRouteModeHeight = useCallback(() => {
-    if (routePlacementMode === 'ceiling') return Math.max(routeHeight, 240);
-    if (routePlacementMode === 'floor') return Math.min(routeHeight, 20);
-    return routeHeight;
-  }, [routeHeight, routePlacementMode]);
-
-  const prevRouteModeWarningRef = useRef('');
-  useEffect(() => {
-    const warning = getRouteModeWarning();
-    if (warning && warning !== prevRouteModeWarningRef.current) {
-      addToast(warning, 'warn');
-    }
-    prevRouteModeWarningRef.current = warning;
-  }, [getRouteModeWarning, addToast]);
-
-  const getPointColor = (point) => {
-    const symbolType = point?.electricalSymbol?.type || '';
-    if (symbolType === 'light') return 0xffc857;
-    if (symbolType === 'switch') return 0x60a5fa;
-    return 0x10b981;
-  };
-
-  const addOpeningMesh = useCallback((point, type) => {
-    if (!metaGroupRef.current) return;
-    const widthCm = type === 'door' ? doorWidthCm : windowWidthCm;
-    const widthM = toMeters(widthCm);
-    const depthM = 0.08;
-    const heightM = type === 'door' ? 2.0 : 1.2;
-    const yCenter = type === 'door' ? heightM / 2 : roomCeilingHeightM - heightM / 2;
-    const group = type === 'door'
-      ? buildDoorGroup(widthM, heightM, depthM)
-      : buildWindowGroup(widthM, heightM, depthM);
-    group.position.set(point.x, yCenter, point.z);
-    group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
-    metaGroupRef.current.add(group);
-  }, [doorWidthCm, roomCeilingHeightM, toMeters, windowWidthCm]);
 
   const redrawScene = useCallback(() => {
     if (!sceneRef.current || !sceneData.floorPlan) return;
@@ -897,6 +579,14 @@ const FloorPlan3D = () => {
     }
   }, [projectId, selectedCircuitId, selectedRoomId, addToast]);
 
+  const {
+    pushHistoryAction,
+    undoLastAction,
+    redoLastAction,
+    canUndo,
+    canRedo,
+  } = useFloorPlanHistory({ loadSceneData, addToast });
+
   useEffect(() => {
     loadSceneData();
   }, [loadSceneData]);
@@ -1071,134 +761,6 @@ const FloorPlan3D = () => {
     return Number(minDistance.toFixed(2));
   }, []);
 
-  const pickRouteHandleIndex = (event) => {
-    if (!rendererRef.current || !cameraRef.current) return -1;
-    const rect = rendererRef.current.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, cameraRef.current);
-    const intersects = raycaster.intersectObjects(routeHandleMeshesRef.current, false);
-    if (!intersects.length) return -1;
-    const idx = intersects[0]?.object?.userData?.routeHandleIndex;
-    return typeof idx === 'number' ? idx : -1;
-  };
-
-  const redrawRouteDraft = useCallback(() => {
-    if (!routesGroupRef.current) return;
-    if (routeDraftLineRef.current) {
-      routeDraftLineRef.current.geometry.dispose();
-      routeDraftLineRef.current.material.dispose();
-      routesGroupRef.current.remove(routeDraftLineRef.current);
-      routeDraftLineRef.current = null;
-    }
-    if (routeDraftBadLineRef.current) {
-      routeDraftBadLineRef.current.geometry.dispose();
-      routeDraftBadLineRef.current.material.dispose();
-      routesGroupRef.current.remove(routeDraftBadLineRef.current);
-      routeDraftBadLineRef.current = null;
-    }
-    routeHandleMeshesRef.current.forEach((hitMesh) => {
-      const grp = hitMesh.parent && hitMesh.parent !== routesGroupRef.current
-        ? hitMesh.parent
-        : hitMesh;
-      grp.traverse((child) => {
-        if (child.isMesh) {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) child.material.dispose();
-        }
-      });
-      routesGroupRef.current.remove(grp);
-    });
-    routeHandleMeshesRef.current = [];
-    setRoutePointCount(routePointsRef.current.length);
-
-    if (routePointsRef.current.length >= 2) {
-      const geometry = new THREE.BufferGeometry().setFromPoints(routePointsRef.current);
-      const material = new THREE.LineDashedMaterial({
-        color: 0x38bdf8,
-        dashSize: 0.2,
-        gapSize: 0.1,
-      });
-      const line = new THREE.Line(geometry, material);
-      line.computeLineDistances();
-      routeDraftLineRef.current = line;
-      routesGroupRef.current.add(line);
-      let sum = 0;
-      for (let i = 1; i < routePointsRef.current.length; i += 1) {
-        sum += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
-      }
-      setRouteDraftLength(Number(sum.toFixed(2)));
-    }
-
-    routePointsRef.current.forEach((p, idx) => {
-      const selected = dragStateRef.current.active && dragStateRef.current.nodeIndex === idx;
-      const isFirst = idx === 0;
-      const isLast = idx === routePointsRef.current.length - 1;
-      const coreColor = selected ? 0xf97316 : isFirst ? 0x22d3ee : isLast ? 0x34d399 : 0x67e8f9;
-      const ringColor = selected ? 0xfbbf24 : 0x0ea5e9;
-
-      const handleGroup = new THREE.Group();
-      handleGroup.position.copy(p);
-
-      const coreMat = new THREE.MeshStandardMaterial({ color: coreColor, roughness: 0.3, metalness: 0.5 });
-      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), coreMat);
-      handleGroup.add(core);
-
-      const ringMat = new THREE.MeshStandardMaterial({ color: ringColor, roughness: 0.4, metalness: 0.3 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.012, 4, 16), ringMat);
-      ring.rotation.x = Math.PI / 2;
-      handleGroup.add(ring);
-
-      // Invisible hit sphere for raycasting
-      const hitMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.11, 8, 8),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-      );
-      hitMesh.userData = { routeHandleIndex: idx, routeHandlePos: p.clone() };
-      handleGroup.add(hitMesh);
-
-      routesGroupRef.current.add(handleGroup);
-      routeHandleMeshesRef.current.push(hitMesh);
-    });
-  }, []);
-
-  useEffect(() => {
-    redrawScene();
-    // Keep in-progress route visible after scene redraws (surface/camera mode changes).
-    redrawRouteDraft();
-  }, [redrawRouteDraft, redrawScene]);
-
-  const findNearestExistingPoint = (candidate, pointsForSnap = sceneData.points) => {
-    let nearest = null;
-    let minDistance = Number.POSITIVE_INFINITY;
-    pointsForSnap.forEach((point) => {
-      const px = toMeters(point.positionX);
-      const pz = toMeters(point.positionY);
-      const distance = Math.hypot(candidate.x - px, candidate.z - pz);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearest = {
-          x: px,
-          z: pz,
-          y: Math.max(toMeters(point.heightFromFloor || routeHeight), 0.05),
-          pointId: point.id,
-          symbolType: point?.electricalSymbol?.type || '',
-        };
-      }
-    });
-    if (!nearest || minDistance > SNAP_RADIUS_M) {
-      return { point: candidate, pointId: null, symbolType: null };
-    }
-    return {
-      point: new THREE.Vector3(nearest.x, nearest.y, nearest.z),
-      pointId: nearest.pointId,
-      symbolType: nearest.symbolType,
-    };
-  };
-
   const isPointInsideBounds = useCallback((point, bounds, tolerance = 0.001) => {
     if (!point || !bounds) return false;
     return (
@@ -1251,6 +813,90 @@ const FloorPlan3D = () => {
     () => getRoomBounds(selectedRoom, sceneData.walls),
     [getRoomBounds, sceneData.walls, selectedRoom]
   );
+
+  const routeDraftApi = useRouteDraft({
+    projectId,
+    routesGroupRef,
+    rendererRef,
+    cameraRef,
+    sceneData,
+    selectedCircuitId,
+    setSelectedCircuitId,
+    selectedRoomId,
+    selectedRoomBounds,
+    pushHistoryAction,
+    loadSceneData,
+    addToast,
+    toMeters,
+    toCentimeters,
+    setStats,
+    isPointInsideBounds,
+  });
+
+  const {
+    routePointsRef,
+    routeNodesRef,
+    routeHandleMeshesRef,
+    dragStateRef,
+    newRouteName,
+    setNewRouteName,
+    routeDraftLength,
+    routePointCount,
+    routeValidationMessages,
+    selectedRouteId,
+    routeHeight,
+    setRouteHeight,
+    routePlacementMode,
+    setRoutePlacementMode,
+    getRouteModeWarning,
+    getRouteModeHeight,
+    redrawRouteDraft,
+    validateRouteDraft,
+    makeOrthogonalPoint,
+    clearRouteDraft,
+    updateNodeAtIndex,
+    insertNodeAfter,
+    removeNodeAt,
+    removeLastNode,
+    saveRoute,
+    loadRouteToDraft,
+    overwriteSelectedRoute,
+    deleteSelectedRoute,
+    pickRouteHandleIndex,
+  } = routeDraftApi;
+
+  const findNearestExistingPoint = (candidate, pointsForSnap = sceneData.points) => {
+    let nearest = null;
+    let minDistance = Number.POSITIVE_INFINITY;
+    pointsForSnap.forEach((point) => {
+      const px = toMeters(point.positionX);
+      const pz = toMeters(point.positionY);
+      const distance = Math.hypot(candidate.x - px, candidate.z - pz);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = {
+          x: px,
+          z: pz,
+          y: Math.max(toMeters(point.heightFromFloor || routeHeight), 0.05),
+          pointId: point.id,
+          symbolType: point?.electricalSymbol?.type || '',
+        };
+      }
+    });
+    if (!nearest || minDistance > SNAP_RADIUS_M) {
+      return { point: candidate, pointId: null, symbolType: null };
+    }
+    return {
+      point: new THREE.Vector3(nearest.x, nearest.y, nearest.z),
+      pointId: nearest.pointId,
+      symbolType: nearest.symbolType,
+    };
+  };
+
+  useEffect(() => {
+    redrawScene();
+    redrawRouteDraft();
+  }, [redrawRouteDraft, redrawScene]);
 
   const moveCameraByKeyboard = useCallback((direction) => {
     if (!cameraRef.current || !controlsRef.current || !selectedRoomBounds) return false;
@@ -1340,145 +986,6 @@ const FloorPlan3D = () => {
     }
     return true;
   }, [selectedRoomBounds, selectedRoomId, addToast]);
-
-  const makeOrthogonalPoint = (nextPoint, forceVertical = false) => {
-    if (routePointsRef.current.length === 0) return nextPoint;
-    const prev = routePointsRef.current[routePointsRef.current.length - 1];
-    if (forceVertical) {
-      return new THREE.Vector3(prev.x, nextPoint.y, prev.z);
-    }
-    const dy = Math.abs(nextPoint.y - prev.y);
-    const dx = Math.abs(nextPoint.x - prev.x);
-    const dz = Math.abs(nextPoint.z - prev.z);
-    if (dy > dx && dy > dz) {
-      return new THREE.Vector3(prev.x, nextPoint.y, prev.z);
-    }
-    // Preserve nextPoint.y (set by snapPointToSurface) so floor/ceiling height
-    // is not overridden when the dominant displacement is horizontal.
-    if (dx > dz) {
-      return new THREE.Vector3(nextPoint.x, nextPoint.y, prev.z);
-    }
-    return new THREE.Vector3(prev.x, nextPoint.y, nextPoint.z);
-  };
-
-  const validateRouteDraft = useCallback(() => {
-    const messages = [];
-    const points = routePointsRef.current;
-    const nodes = routeNodesRef.current;
-    if (points.length < 2) {
-      messages.push('Добавьте минимум две точки маршрута.');
-    }
-
-    const badSegmentPoints = [];
-    for (let i = 1; i < points.length; i += 1) {
-      const prev = points[i - 1];
-      const current = points[i];
-      const dx = Math.abs(current.x - prev.x);
-      const dy = Math.abs(current.y - prev.y);
-      const dz = Math.abs(current.z - prev.z);
-      const changedAxes =
-        (dx > ORTHOGONAL_TOLERANCE_M ? 1 : 0) +
-        (dy > ORTHOGONAL_TOLERANCE_M ? 1 : 0) +
-        (dz > ORTHOGONAL_TOLERANCE_M ? 1 : 0);
-      if (changedAxes !== 1) {
-        messages.push(`Сегмент ${i} должен менять только одну координату (X, Y или Z).`);
-        badSegmentPoints.push([prev.clone(), current.clone()]);
-      }
-      const segmentLength = Math.max(dx, dy, dz);
-      if (segmentLength < MIN_SEGMENT_M) {
-        messages.push(`Сегмент ${i} слишком короткий: минимум 0.05 м.`);
-        badSegmentPoints.push([prev.clone(), current.clone()]);
-      }
-    }
-
-    if (nodes.length >= 2) {
-      const start = nodes[0];
-      const end = nodes[nodes.length - 1];
-      if (!start.pointId) {
-        messages.push('Начало трассы должно быть привязано к электрической точке — подведите первый узел ближе к розетке, выключателю или точке старта (до 35 см).');
-      }
-      if (!end.pointId) {
-        messages.push('Конец трассы должен быть привязан к электрической точке — подведите последний узел ближе к розетке, выключателю или точке старта (до 35 см).');
-      }
-      if ((start.symbolType === 'switch' && end.symbolType === 'outlet')
-        || (start.symbolType === 'outlet' && end.symbolType === 'switch')) {
-        messages.push('Прямая трасса между выключателем и розеткой запрещена — добавьте промежуточный узел.');
-      }
-      if (start.symbolType === 'switch' && end.symbolType === 'switch') {
-        messages.push('Трасса не может начинаться и заканчиваться на выключателях.');
-      }
-
-      // ТКП 339: трасса должна начинаться от точки старта (щитка), если она есть в комнате
-      const roomSources = selectedRoomId
-        ? sceneData.points.filter((p) => p.roomId === selectedRoomId && isSourcePointByNotes(p))
-        : [];
-      if (roomSources.length > 0) {
-        const startPoint = sceneData.points.find((p) => p.id === start.pointId);
-        const endPoint = sceneData.points.find((p) => p.id === end.pointId);
-        const startIsSource = startPoint ? isSourcePointByNotes(startPoint) : false;
-        const endIsSource = endPoint ? isSourcePointByNotes(endPoint) : false;
-        if (!startIsSource && !endIsSource) {
-          messages.push('ТКП 339: в помещении есть точка старта (щиток) — трасса должна начинаться или заканчиваться на ней.');
-        }
-      }
-      if (start.pointId && end.pointId && !selectedCircuitId) {
-        const startPoint = sceneData.points.find((p) => p.id === start.pointId);
-        const endPoint = sceneData.points.find((p) => p.id === end.pointId);
-        const startCircuitId = startPoint?.circuitId ? Number(startPoint.circuitId) : null;
-        const endCircuitId = endPoint?.circuitId ? Number(endPoint.circuitId) : null;
-        if (startCircuitId && endCircuitId && startCircuitId === endCircuitId) {
-          messages.push('Оба конца привязаны к точкам одной цепи — выберите эту электрическую цепь в списке выше перед сохранением.');
-        }
-      }
-    }
-
-    if (routePlacementMode === 'ceiling' && getRouteModeHeight() < 240) {
-      messages.push('Для потолочной прокладки высота должна быть не ниже 240 см.');
-    }
-    if (routePlacementMode === 'floor' && getRouteModeHeight() > 20) {
-      messages.push('Для напольной прокладки высота должна быть не выше 20 см.');
-    }
-
-    if (selectedRoomBounds) {
-      const outOfBoundsIndex = points.findIndex((p) => !isPointInsideBounds(p, selectedRoomBounds));
-      if (outOfBoundsIndex >= 0) {
-        messages.push('Маршрут должен полностью находиться в пределах выбранной комнаты.');
-      }
-    }
-
-    if (selectedRoomId && nodes.length >= 2) {
-      const startPoint = sceneData.points.find((p) => p.id === nodes[0]?.pointId);
-      const endPoint = sceneData.points.find((p) => p.id === nodes[nodes.length - 1]?.pointId);
-      if (startPoint && startPoint.roomId !== selectedRoomId) {
-        messages.push('Начальная точка трассы должна принадлежать выбранной комнате.');
-      }
-      if (endPoint && endPoint.roomId !== selectedRoomId) {
-        messages.push('Конечная точка трассы должна принадлежать выбранной комнате.');
-      }
-    }
-
-    setRouteValidationMessages(messages);
-
-    if (routeDraftBadLineRef.current) {
-      routeDraftBadLineRef.current.geometry.dispose();
-      routeDraftBadLineRef.current.material.dispose();
-      routesGroupRef.current.remove(routeDraftBadLineRef.current);
-      routeDraftBadLineRef.current = null;
-    }
-    if (badSegmentPoints.length > 0 && routesGroupRef.current) {
-      const flattened = [];
-      badSegmentPoints.forEach(([a, b]) => {
-        flattened.push(a, b);
-      });
-      const badGeometry = new THREE.BufferGeometry().setFromPoints(flattened);
-      const badMaterial = new THREE.LineBasicMaterial({ color: 0xef4444 });
-      const badLine = new THREE.LineSegments(badGeometry, badMaterial);
-      routeDraftBadLineRef.current = badLine;
-      routesGroupRef.current.add(badLine);
-    }
-
-    return messages;
-  }, [getRouteModeHeight, isPointInsideBounds, routePlacementMode, sceneData.points, selectedCircuitId, selectedRoomBounds, selectedRoomId]);
 
   const handleCanvasClick = async (event) => {
     if (suppressClickRef.current) {
@@ -2559,8 +2066,6 @@ const FloorPlan3D = () => {
     () => circuits.find((circuit) => String(circuit.id) === String(selectedCircuitId)) || null,
     [circuits, selectedCircuitId]
   );
-  const canUndo = useMemo(() => historyRef.current.undo.length > 0, [historyVersion]);
-  const canRedo = useMemo(() => historyRef.current.redo.length > 0, [historyVersion]);
   const validationStages = useMemo(() => {
     const stage1Errors = [];
     const stage2Errors = [];
@@ -2785,109 +2290,6 @@ const FloorPlan3D = () => {
     clearGhostPreview();
   };
 
-  const clearRouteDraft = () => {
-    routePointsRef.current = [];
-    routeNodesRef.current = [];
-    setRouteDraftLength(0);
-    setRoutePointCount(0);
-    setRouteValidationMessages([]);
-    setSelectedRouteId(null);
-    redrawRouteDraft();
-  };
-
-  const rebuildRouteRefsFromNodes = useCallback((nodes) => {
-    routeNodesRef.current = nodes.map((node) => ({ ...node }));
-    routePointsRef.current = nodes.map(
-      (node) => new THREE.Vector3(Number(node.x), Number(node.z), Number(node.y))
-    );
-    redrawRouteDraft();
-    validateRouteDraft();
-  }, [redrawRouteDraft, validateRouteDraft]);
-
-  const updateNodeAtIndex = (index, axis, value) => {
-    const parsed = Number(value);
-    if (Number.isNaN(parsed)) return;
-    const nextNodes = routeNodesRef.current.map((node, i) =>
-      i === index ? { ...node, [axis]: parsed } : node
-    );
-    rebuildRouteRefsFromNodes(nextNodes);
-  };
-
-  const insertNodeAfter = (index) => {
-    if (index < 0 || index >= routeNodesRef.current.length) return;
-    const current = routeNodesRef.current[index];
-    const next = routeNodesRef.current[index + 1];
-    const inserted = next
-      ? {
-        x: Number(((current.x + next.x) / 2).toFixed(4)),
-        y: Number(((current.y + next.y) / 2).toFixed(4)),
-        z: Number(((current.z + next.z) / 2).toFixed(4)),
-        pointId: null,
-        symbolType: null,
-      }
-      : { ...current, pointId: null, symbolType: null };
-    const nextNodes = [...routeNodesRef.current];
-    nextNodes.splice(index + 1, 0, inserted);
-    rebuildRouteRefsFromNodes(nextNodes);
-  };
-
-  const removeNodeAt = (index) => {
-    if (routeNodesRef.current.length <= 2) return;
-    const nextNodes = routeNodesRef.current.filter((_, i) => i !== index);
-    rebuildRouteRefsFromNodes(nextNodes);
-  };
-
-  const removeLastNode = useCallback(() => {
-    if (routeNodesRef.current.length === 0) return;
-    routeNodesRef.current = routeNodesRef.current.slice(0, -1);
-    routePointsRef.current = routePointsRef.current.slice(0, -1);
-    setRoutePointCount(routeNodesRef.current.length);
-    redrawRouteDraft();
-    validateRouteDraft();
-  }, [redrawRouteDraft, validateRouteDraft]);
-
-  const undoLastAction = useCallback(async () => {
-    if (historyRef.current.applying || historyRef.current.undo.length === 0) return;
-    const action = historyRef.current.undo.pop();
-    if (!action?.undo) return;
-    try {
-      historyRef.current.applying = true;
-      await action.undo();
-      historyRef.current.redo.push(action);
-      if (historyRef.current.redo.length > MAX_HISTORY_SIZE) {
-        historyRef.current.redo.shift();
-      }
-      setHistoryVersion((v) => v + 1);
-      await loadSceneData();
-      addToast('Действие отменено', 'info');
-    } catch (e) {
-      addToast(action.undoError || 'Не удалось отменить действие', 'error');
-    } finally {
-      historyRef.current.applying = false;
-    }
-  }, [MAX_HISTORY_SIZE, addToast, loadSceneData]);
-
-  const redoLastAction = useCallback(async () => {
-    if (historyRef.current.applying || historyRef.current.redo.length === 0) return;
-    const action = historyRef.current.redo.pop();
-    if (!action?.redo) return;
-    try {
-      historyRef.current.applying = true;
-      await action.redo();
-      historyRef.current.undo.push(action);
-      if (historyRef.current.undo.length > MAX_HISTORY_SIZE) {
-        historyRef.current.undo.shift();
-      }
-      setHistoryVersion((v) => v + 1);
-      await loadSceneData();
-      addToast('Действие повторено', 'info');
-    } catch (e) {
-      addToast(action.redoError || 'Не удалось повторить действие', 'error');
-    } finally {
-      historyRef.current.applying = false;
-    }
-  }, [MAX_HISTORY_SIZE, addToast, loadSceneData]);
-
   const deleteHoveredObject = useCallback(async () => {
     const hovered = hoveredObjectRef.current;
     if (!hovered) return;
@@ -3035,167 +2437,6 @@ const FloorPlan3D = () => {
     return () => window.removeEventListener('keydown', onHistoryHotkeys);
   }, [deleteHoveredObject, redoLastAction, removeLastNode, undoLastAction]);
 
-  const saveRoute = async () => {
-    if (routePointsRef.current.length < 2) {
-      addToast('Добавьте минимум 2 точки трассы перед сохранением.', 'info');
-      return;
-    }
-    const draftErrors = validateRouteDraft();
-    if (draftErrors.length > 0) {
-      draftErrors.slice(0, 3).forEach((msg) => addToast(msg, 'warn'));
-      return;
-    }
-    try {
-      const path = routeNodesRef.current.map((node) => ({
-        x: Number(toCentimeters(node.x).toFixed(2)),
-        y: Number(toCentimeters(node.y).toFixed(2)),
-        z: Number(toCentimeters(node.z).toFixed(2)),
-        ...(node.pointId ? { pointId: node.pointId } : {}),
-      }));
-      let length = 0;
-      for (let i = 1; i < routePointsRef.current.length; i += 1) {
-        length += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
-      }
-      const routePayload = {
-        circuitId: selectedCircuitId ? Number(selectedCircuitId) : null,
-        lengthM: Number(length.toFixed(2)),
-        installationScope: 'PLANNED',
-        pathJson: JSON.stringify(path),
-        notes: newRouteName.trim() || 'Трасса 3D',
-      };
-      const createdRoute = await cableRunAPI.create(projectId, routePayload);
-      const createdRouteId = createdRoute?.data?.id;
-      setStats((prev) => ({ ...prev, routes: prev.routes + 1 }));
-      if (createdRouteId) {
-        let activeRouteId = createdRouteId;
-        pushHistoryAction({
-          undo: async () => cableRunAPI.delete(projectId, activeRouteId),
-          redo: async () => {
-            const recreated = await cableRunAPI.create(projectId, routePayload);
-            activeRouteId = recreated?.data?.id || activeRouteId;
-          },
-          undoError: 'Не удалось отменить создание трассы',
-          redoError: 'Не удалось повторить создание трассы',
-        });
-      }
-      await loadSceneData();
-      clearRouteDraft();
-      setNewRouteName('');
-      addToast('Трасса сохранена. Можно прокладывать следующую — просто кликайте на сцене.', 'success');
-    } catch (e) {
-      const msg = e?.response?.data?.message || 'Не удалось сохранить трассу кабеля';
-      addToast(msg, 'error');
-    }
-  };
-
-  const loadRouteToDraft = (routeId) => {
-    const route = sceneData.routes.find((r) => r.id === routeId);
-    if (!route || !route.pathJson) return;
-    try {
-      const parsed = JSON.parse(route.pathJson);
-      if (!Array.isArray(parsed) || parsed.length < 2) return;
-      routePointsRef.current = parsed.map((n) => new THREE.Vector3(toMeters(n.x), toMeters(n.z || 0), toMeters(n.y)));
-      routeNodesRef.current = parsed.map((n) => ({
-        x: toMeters(n.x),
-        y: toMeters(n.y),
-        z: toMeters(n.z || 0),
-        pointId: n.pointId || null,
-        symbolType: null,
-      }));
-      setSelectedRouteId(route.id);
-      setNewRouteName(route.notes || '');
-      setSelectedCircuitId(route.circuitId ? String(route.circuitId) : '');
-      redrawRouteDraft();
-      validateRouteDraft();
-    } catch (e) {
-      addToast('Не удалось загрузить трассу для редактирования', 'error');
-    }
-  };
-
-  const overwriteSelectedRoute = async () => {
-    if (!selectedRouteId) return;
-    if (validateRouteDraft().length > 0) {
-      addToast('Черновик трассы не прошел валидацию.', 'warn');
-      return;
-    }
-    try {
-      const path = routeNodesRef.current.map((node) => ({
-        x: Number(toCentimeters(node.x).toFixed(2)),
-        y: Number(toCentimeters(node.y).toFixed(2)),
-        z: Number(toCentimeters(node.z).toFixed(2)),
-        ...(node.pointId ? { pointId: node.pointId } : {}),
-      }));
-      let length = 0;
-      for (let i = 1; i < routePointsRef.current.length; i += 1) {
-        length += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
-      }
-      const previousRoute = sceneData.routes.find((route) => route.id === selectedRouteId);
-      const updatePayload = {
-        circuitId: selectedCircuitId ? Number(selectedCircuitId) : null,
-        lengthM: Number(length.toFixed(2)),
-        installationScope: 'PLANNED',
-        pathJson: JSON.stringify(path),
-        notes: newRouteName.trim() || `Трасса ${selectedRouteId}`,
-      };
-      await cableRunAPI.update(projectId, selectedRouteId, updatePayload);
-      if (previousRoute) {
-        pushHistoryAction({
-          undo: async () => cableRunAPI.update(projectId, selectedRouteId, {
-            circuitId: previousRoute.circuitId || null,
-            lengthM: Number(previousRoute.lengthM || 0),
-            installationScope: previousRoute.installationScope || 'PLANNED',
-            pathJson: previousRoute.pathJson,
-            notes: previousRoute.notes || `Трасса ${selectedRouteId}`,
-          }),
-          redo: async () => cableRunAPI.update(projectId, selectedRouteId, updatePayload),
-          undoError: 'Не удалось отменить обновление трассы',
-          redoError: 'Не удалось повторить обновление трассы',
-        });
-      }
-      await loadSceneData();
-      clearRouteDraft();
-      addToast('Трасса обновлена. Черновик очищен — можно прокладывать следующую.', 'success');
-    } catch (e) {
-      const msg = e?.response?.data?.message || 'Не удалось обновить трассу кабеля';
-      addToast(msg, 'error');
-    }
-  };
-
-  const deleteSelectedRoute = async () => {
-    if (!selectedRouteId) return;
-    try {
-      const deletedRouteSnapshot = sceneData.routes.find((route) => route.id === selectedRouteId);
-      await cableRunAPI.delete(projectId, selectedRouteId);
-      if (deletedRouteSnapshot) {
-        let restoredRouteId = null;
-        pushHistoryAction({
-          undo: async () => {
-            const restored = await cableRunAPI.create(projectId, {
-              circuitId: deletedRouteSnapshot.circuitId || null,
-              lengthM: Number(deletedRouteSnapshot.lengthM || 0),
-              installationScope: deletedRouteSnapshot.installationScope || 'PLANNED',
-              pathJson: deletedRouteSnapshot.pathJson,
-              notes: deletedRouteSnapshot.notes || 'Трасса 3D',
-            });
-            restoredRouteId = restored?.data?.id || restoredRouteId;
-          },
-          redo: async () => {
-            if (restoredRouteId) {
-              await cableRunAPI.delete(projectId, restoredRouteId);
-            }
-          },
-          undoError: 'Не удалось отменить удаление трассы',
-          redoError: 'Не удалось повторить удаление трассы',
-        });
-      }
-      clearRouteDraft();
-      await loadSceneData();
-      addToast('Трасса удалена', 'info');
-    } catch (e) {
-      addToast('Не удалось удалить трассу', 'error');
-    }
-  };
-
   const readinessText = useMemo(() => {
     if (stats.walls === 0) {
       return 'Для точного 3D-метража сначала задайте стены и проемы в настройках проекта.';
@@ -3235,521 +2476,82 @@ const FloorPlan3D = () => {
       </header>
 
       <main className="floor-plan-3d-main">
-        <aside className="floor-plan-3d-panel">
-          <h2>Инструменты</h2>
-          <div className="room-list-panel">
-            <h3>Комнаты текущего расчета</h3>
-            <div className="room-list-scroll">
-              {sceneData.rooms.map((room) => (
-                <div
-                  key={room.id}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto',
-                    gap: '6px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <button
-                    type="button"
-                    className={selectedRoomId === room.id ? 'route-item-btn active' : 'route-item-btn'}
-                    onClick={() => focusRoom(room.id)}
-                  >
-                    {room.name}
-                  </button>
-                  <button type="button" className="btn-secondary" onClick={() => enterRoom(room.id)}>
-                    Войти
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="floor-plan-3d-tip">
-              Редактирование выполняется только внутри выбранной комнаты.
-            </div>
-            <div className="floor-plan-3d-tip">
-              Сначала выберите комнату и нажмите «Войти» или используйте режимы камеры, затем размещайте точки и трассы внутри нее.
-            </div>
-          </div>
-          {selectedRoom && (
-            <>
-              <div className="room-geometry-panel">
-                <h3>Геометрия комнаты для 3D</h3>
-                {selectedRoom.area && (
-                  <div className="floor-plan-3d-tip">
-                    Площадь комнаты: <strong>{Number(selectedRoom.area).toFixed(2)} м²</strong>.
-                    При изменении одной стороны в метрах вторая может быть рассчитана из площади.
-                  </div>
-                )}
-                <div className="editor-field">
-                  <label htmlFor="roomWidthM">Ширина, м</label>
-                  <input
-                    id="roomWidthM"
-                    type="number"
-                    min="0.5"
-                    max="50"
-                    step="0.1"
-                    value={roomWidthCm != null ? (roomWidthCm / 100).toFixed(2) : ''}
-                    onChange={(e) => {
-                      const val = Number(e.target.value || 0);
-                      setLastEditedRoomSide('width');
-                      if (!val) {
-                        setRoomWidthCm(null);
-                        return;
-                      }
-                      const cm = val * 100;
-                      setRoomWidthCm(cm);
-                      const areaM2 = Number(selectedRoom.area || 0);
-                      if (areaM2 > 0) {
-                        const otherCm = (areaM2 * 10000) / cm;
-                        setRoomLengthCm(otherCm);
-                      }
-                    }}
-                  />
-                </div>
-                <div className="editor-field">
-                  <label htmlFor="roomLengthM">Длина, м</label>
-                  <input
-                    id="roomLengthM"
-                    type="number"
-                    min="0.5"
-                    max="50"
-                    step="0.1"
-                    value={roomLengthCm != null ? (roomLengthCm / 100).toFixed(2) : ''}
-                    onChange={(e) => {
-                      const val = Number(e.target.value || 0);
-                      setLastEditedRoomSide('length');
-                      if (!val) {
-                        setRoomLengthCm(null);
-                        return;
-                      }
-                      const cm = val * 100;
-                      setRoomLengthCm(cm);
-                      const areaM2 = Number(selectedRoom.area || 0);
-                      if (areaM2 > 0) {
-                        const otherCm = (areaM2 * 10000) / cm;
-                        setRoomWidthCm(otherCm);
-                      }
-                    }}
-                  />
-                </div>
-                <div className="editor-field">
-                  <label htmlFor="roomHeightM">Высота потолка, м</label>
-                  <input
-                    id="roomHeightM"
-                    type="number"
-                    min="2"
-                    max="5"
-                    step="0.1"
-                    value={roomCeilingHeightM.toFixed(2)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value || ROOM_HEIGHT_M);
-                      const nextHeight = val > 0 ? val : ROOM_HEIGHT_M;
-                      setRoomCeilingHeightM(nextHeight);
-                      if (selectedRoomId) {
-                        setRoomHeightById((prev) => ({ ...prev, [selectedRoomId]: nextHeight }));
-                      }
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={saveSelectedRoomGeometry}
-                  disabled={savingRoomGeometry}
-                >
-                  {savingRoomGeometry ? 'Сохранение...' : 'Сохранить геометрию комнаты'}
-                </button>
-              </div>
-              <div className="room-plan-panel">
-                <h3>Сохранения 3D расчетов</h3>
-                <div className="editor-field">
-                  <label htmlFor="saveCalcName">Название сохранения</label>
-                  <input
-                    id="saveCalcName"
-                    type="text"
-                    value={saveCalcName}
-                    onChange={(e) => setSaveCalcName(e.target.value)}
-                    placeholder="Например: Вариант с доп. линией кухни"
-                  />
-                </div>
-                <button type="button" className="btn-primary" onClick={saveCurrent3DCalculation}>
-                  Сохранить текущий 3D расчет
-                </button>
-                <div className="room-list-scroll" style={{ marginTop: '8px' }}>
-                  {saved3DCalculations.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={selectedSavedCalcId === item.id ? 'route-item-btn active' : 'route-item-btn'}
-                      onClick={() => openSaved3DCalculation(item.id)}
-                    >
-                      #{item.id} {item.name}
-                    </button>
-                  ))}
-                </div>
-                {selectedSavedCalcDetails && (
-                  <div className="floor-plan-3d-tip">
-                    <div><strong>{selectedSavedCalcDetails.name}</strong></div>
-                    <div>Сохранено: {new Date(selectedSavedCalcDetails.createdAt).toLocaleString('ru-RU')}</div>
-                    {selectedSavedCalcDetails.calculation && (
-                      <div>
-                        Мощность: {Number(selectedSavedCalcDetails.calculation.totalPowerConsumption || 0).toFixed(0)} Вт,
-                        кабель: {Number(selectedSavedCalcDetails.calculation.cableLength || 0).toFixed(2)} м
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              {selectedRoom && (
-                <div className="floor-plan-3d-tip">
-                  Геометрию и площадь комнаты изменяйте в настройках проекта: /projects/{projectId}/edit.
-                </div>
-              )}
-              <div className="tool-grid">
-                <button className={tool === 'navigate' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('navigate')}>
-                  Навигация
-                </button>
-                <button className={tool === 'add-source' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-source')}>
-                  Точка старта линии
-                </button>
-                <button className={tool === 'add-outlet' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-outlet')}>
-                  Розетка
-                </button>
-                <button className={tool === 'add-switch' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-switch')}>
-                  Выключатель
-                </button>
-                <button className={tool === 'add-light' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-light')}>
-                  Лампа
-                </button>
-                <button className={tool === 'draw-route' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('draw-route')}>
-                  Трасса кабеля
-                </button>
-                <button className={tool === 'add-door' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-door')}>
-                  Дверь
-                </button>
-                <button className={tool === 'add-window' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-window')}>
-                  Окно
-                </button>
-                <button
-                  className={tool === 'delete' ? 'tool-btn active' : 'tool-btn'}
-                  style={tool === 'delete' ? { borderColor: '#f87171', background: '#3b0f0f' } : {}}
-                  onClick={() => setTool('delete')}
-                >
-                  🗑 Удалить объект
-                </button>
-              </div>
-              {tool === 'delete' && (
-                <div className="floor-plan-3d-tip" style={{ color: '#fca5a5', borderColor: '#7f1d1d', background: '#1c0a0a' }}>
-                  Наведите на точку или трассу и нажмите ЛКМ или клавишу Delete для удаления.
-                </div>
-              )}
-              <div className="editor-field">
-                <label htmlFor="surfaceMode">Рабочая поверхность</label>
-                <select id="surfaceMode" value={surfaceMode} onChange={(e) => setSurfaceMode(e.target.value)}>
-                  <option value="wall">Стены</option>
-                  <option value="floor">Пол</option>
-                  <option value="ceiling">Потолок</option>
-                </select>
-              </div>
-              {surfaceMode === 'wall' && (
-                <div className="editor-field">
-                  <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
-                  <select id="wallFaceMode" value={wallFaceMode} onChange={(e) => setWallFaceMode(e.target.value)}>
-                    <option value="auto">Авто (ближайшая)</option>
-                    <option value="north">Северная</option>
-                    <option value="south">Южная</option>
-                    <option value="west">Западная</option>
-                    <option value="east">Восточная</option>
-                  </select>
-                </div>
-              )}
-              <div className="editor-field">
-                <label htmlFor="parallelOffsetCm">Смещение параллельной линии, см</label>
-                <input
-                  id="parallelOffsetCm"
-                  type="number"
-                  min="-30"
-                  max="30"
-                  value={parallelOffsetCm}
-                  onChange={(e) => setParallelOffsetCm(Number(e.target.value || 0))}
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="doorWidth">Ширина двери, см</label>
-                <input
-                  id="doorWidth"
-                  type="number"
-                  min="50"
-                  max="200"
-                  value={doorWidthCm}
-                  onChange={(e) => setDoorWidthCm(Number(e.target.value || 0))}
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="windowWidth">Ширина окна, см</label>
-                <input
-                  id="windowWidth"
-                  type="number"
-                  min="50"
-                  max="300"
-                  value={windowWidthCm}
-                  onChange={(e) => setWindowWidthCm(Number(e.target.value || 0))}
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="pointHeight">Высота точки, см</label>
-                <input
-                  id="pointHeight"
-                  type="number"
-                  min="0"
-                  max="400"
-                  value={pointHeight}
-                  onChange={(e) => setPointHeight(Number(e.target.value || 0))}
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="routeName">Название трассы</label>
-                <input
-                  id="routeName"
-                  type="text"
-                  value={newRouteName}
-                  onChange={(e) => setNewRouteName(e.target.value)}
-                  placeholder="Например: Кухня-розетки-1"
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="routeHeight">Базовая высота трассы, см</label>
-                <input
-                  id="routeHeight"
-                  type="number"
-                  min="0"
-                  max="400"
-                  value={routeHeight}
-                  onChange={(e) => setRouteHeight(Number(e.target.value || 0))}
-                />
-              </div>
-              <div className="editor-field">
-                <label htmlFor="routeMode">Режим прокладки</label>
-                <select
-                  id="routeMode"
-                  value={routePlacementMode}
-                  onChange={(e) => setRoutePlacementMode(e.target.value)}
-                >
-                  <option value="wall">По стене</option>
-                  <option value="ceiling">По потолку</option>
-                  <option value="floor">По полу</option>
-                </select>
-              </div>
-              <div className="editor-field">
-                <label htmlFor="routeCircuit">Электрическая цепь</label>
-                <select
-                  id="routeCircuit"
-                  value={selectedCircuitId}
-                  onChange={(e) => setSelectedCircuitId(e.target.value)}
-                >
-                  <option value="">Без цепи</option>
-                  {circuits.map((circuit) => (
-                    <option key={circuit.id} value={circuit.id}>
-                      {circuit.name} ({circuit.breakerRatingA || '?'}A)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="floor-plan-3d-tip">
-                <strong>Логика разводки:</strong> 1) поставьте «Точку старта» на стене/потолке, 2) проложите трассы от неё — клик рядом со старт-точкой прицепит маршрут к ней, 3) завершите трассу у розетки или другой точки. После сохранения черновик очищается — начинайте следующую трассу сразу.
-              </div>
-
-              <div className="route-actions">
-                <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0} title="Сохранить текущий черновик в базу и очистить для новой трассы">
-                  ✓ Сохранить и начать новую
-                </button>
-                <button type="button" className="btn-primary" onClick={overwriteSelectedRoute} disabled={!selectedRouteId || routePointCount < 2 || routeValidationMessages.length > 0} title="Заменить уже сохранённую трассу текущим черновиком">
-                  Обновить выбранную
-                </button>
-                <button type="button" className="btn-secondary" onClick={removeLastNode} disabled={routePointCount === 0}>
-                  ← Удалить последний узел
-                </button>
-                <button type="button" className="btn-secondary" onClick={clearRouteDraft} title="Отменить черновик без сохранения">
-                  Сбросить черновик
-                </button>
-                <button type="button" className="btn-secondary" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>
-                  Удалить выбранную
-                </button>
-              </div>
-              {routeValidationMessages.length > 0 && (
-                <div className="route-validation-messages">
-                  <strong>Что нужно исправить:</strong>
-                  <ul>
-                    {routeValidationMessages.map((msg) => (
-                      <li key={msg}>{msg}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {routeNodesRef.current.length > 0 && (
-                <div className="route-node-editor">
-                  <h3>Узлы черновика</h3>
-                  <div className="route-node-scroll">
-                    {routeNodesRef.current.map((node, idx) => (
-                      <div key={`${idx}-${node.x}-${node.y}-${node.z}`} className="route-node-row">
-                        <span className="route-node-index">#{idx + 1}</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={Number(toCentimeters(node.x).toFixed(1))}
-                          onChange={(e) => updateNodeAtIndex(idx, 'x', toMeters(e.target.value))}
-                          title="X (см)"
-                        />
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={Number(toCentimeters(node.y).toFixed(1))}
-                          onChange={(e) => updateNodeAtIndex(idx, 'y', toMeters(e.target.value))}
-                          title="Y (см)"
-                        />
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={Number(toCentimeters(node.z).toFixed(1))}
-                          onChange={(e) => updateNodeAtIndex(idx, 'z', toMeters(e.target.value))}
-                          title="Z (см)"
-                        />
-                        <button type="button" className="mini-btn" onClick={() => insertNodeAfter(idx)}>+</button>
-                        <button type="button" className="mini-btn" onClick={() => removeNodeAt(idx)} disabled={routeNodesRef.current.length <= 2}>-</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <h2>Статус сцены</h2>
-              <ul>
-                <li>Помещения: {stats.rooms}</li>
-                <li>Стены: {stats.walls}</li>
-                <li>Точки: {stats.points}</li>
-                <li>Трассы: {stats.routes}</li>
-                <li>Узлы трассы: {routePointCount}</li>
-                <li>Длина черновика: {routeDraftLength.toFixed(2)} м</li>
-              </ul>
-              <div className="floor-plan-3d-tip">{readinessText}</div>
-              <div className="floor-plan-3d-tip">
-                <strong>Ступенчатая валидация ТКП:</strong>
-                <div>Шаг 1 (геометрия): {validationStages.stage1Errors.length ? `ошибки: ${validationStages.stage1Errors.join('; ')}` : 'OK'}</div>
-                <div>Шаг 2 (электробезопасность): {validationStages.stage2Errors.length ? `ошибки: ${validationStages.stage2Errors.join('; ')}` : 'OK'}</div>
-                <div>Шаг 3 (уточнение): {validationStages.stage3Warnings.length ? validationStages.stage3Warnings.join('; ') : 'OK'}</div>
-              </div>
-              {selectedRoom && (
-                <div className="floor-plan-3d-tip">
-                  <strong>{selectedRoom.name} — текущее состояние:</strong>
-                  <div>Точек: {roomExistingStats.points} (розетки {roomExistingStats.outlets}, выключатели {roomExistingStats.switches}, свет {roomExistingStats.lights})</div>
-                  <div>Приборов в комнате: {roomExistingStats.appliances}</div>
-                  {selectedRoomCalculation && (
-                    <div>
-                      Частичный расчет: {selectedRoomCalculation.applianceCount} приборов, {Number(selectedRoomCalculation.totalPower || 0).toFixed(0)} Вт
-                    </div>
-                  )}
-                </div>
-              )}
-              {selectedRoom && (
-                <div className="room-plan-panel">
-                  <h3>План размещения (что хотим добавить)</h3>
-                  <div className="editor-field">
-                    <label>План: розетки, шт</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={roomPlan.plannedOutlets}
-                      onChange={(e) => setRoomPlanData((prev) => ({
-                        ...prev,
-                        [selectedRoomId]: { ...roomPlan, plannedOutlets: Number(e.target.value || 0) },
-                      }))}
-                    />
-                  </div>
-                  <div className="editor-field">
-                    <label>План: выключатели, шт</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={roomPlan.plannedSwitches}
-                      onChange={(e) => setRoomPlanData((prev) => ({
-                        ...prev,
-                        [selectedRoomId]: { ...roomPlan, plannedSwitches: Number(e.target.value || 0) },
-                      }))}
-                    />
-                  </div>
-                  <div className="editor-field">
-                    <label>План: световые точки, шт</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={roomPlan.plannedLights}
-                      onChange={(e) => setRoomPlanData((prev) => ({
-                        ...prev,
-                        [selectedRoomId]: { ...roomPlan, plannedLights: Number(e.target.value || 0) },
-                      }))}
-                    />
-                  </div>
-                  <div className="editor-field">
-                    <label>Резерв кабеля, м</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={roomPlan.cableReserveM}
-                      onChange={(e) => setRoomPlanData((prev) => ({
-                        ...prev,
-                        [selectedRoomId]: { ...roomPlan, cableReserveM: Number(e.target.value || 0) },
-                      }))}
-                    />
-                  </div>
-                  <div className="floor-plan-3d-tip">
-                    План по комнате: +{roomPlan.plannedOutlets + roomPlan.plannedSwitches + roomPlan.plannedLights} точек,
-                    доп. кабель {Number(roomPlan.cableReserveM || 0).toFixed(1)} м.
-                  </div>
-                </div>
-              )}
-              {getRouteModeWarning() && (
-                <div className="floor-plan-3d-tip">
-                  {getRouteModeWarning()}
-                </div>
-              )}
-              <div className="floor-plan-3d-tip">
-                Если выбрана цепь, конечные точки трассы автоматически привязываются к ней (если у точек еще нет цепи).
-              </div>
-              <div className="floor-plan-3d-tip">
-                Для вертикального сегмента удерживайте Shift при клике. Для плотной прокладки рядом используйте смещение линии.
-              </div>
-              <div className="floor-plan-3d-tip">
-                Горячие клавиши: 1-розетка, 2-выключатель, 3-свет, 4-трасса, W-стены, F-пол, C-потолок.
-              </div>
-              <div className="route-actions">
-                <button type="button" className="btn-secondary" onClick={undoLastAction} disabled={!canUndo}>
-                  Undo (Ctrl+Z)
-                </button>
-                <button type="button" className="btn-secondary" onClick={redoLastAction} disabled={!canRedo}>
-                  Redo (Ctrl+Y)
-                </button>
-              </div>
-              <div className="existing-routes-list">
-                <h3>Существующие трассы</h3>
-                <ul>
-                  {sceneData.routes.map((route) => (
-                    <li key={route.id}>
-                      <button
-                        type="button"
-                        className={selectedRouteId === route.id ? 'route-item-btn active' : 'route-item-btn'}
-                        onClick={() => loadRouteToDraft(route.id)}
-                      >
-                        #{route.id} {route.notes || 'Без названия'} ({Number(route.lengthM || 0).toFixed(2)} м)
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          )}
-        </aside>
+                <FloorPlan3DSidebar
+          sceneData={sceneData}
+          focusRoom={focusRoom}
+          enterRoom={enterRoom}
+          selectedRoomId={selectedRoomId}
+          selectedRoom={selectedRoom}
+          roomWidthCm={roomWidthCm}
+          setRoomWidthCm={setRoomWidthCm}
+          roomLengthCm={roomLengthCm}
+          setRoomLengthCm={setRoomLengthCm}
+          setLastEditedRoomSide={setLastEditedRoomSide}
+          roomCeilingHeightM={roomCeilingHeightM}
+          setRoomCeilingHeightM={setRoomCeilingHeightM}
+          setRoomHeightById={setRoomHeightById}
+          saveSelectedRoomGeometry={saveSelectedRoomGeometry}
+          savingRoomGeometry={savingRoomGeometry}
+          saveCalcName={saveCalcName}
+          setSaveCalcName={setSaveCalcName}
+          saveCurrent3DCalculation={saveCurrent3DCalculation}
+          saved3DCalculations={saved3DCalculations}
+          selectedSavedCalcId={selectedSavedCalcId}
+          openSaved3DCalculation={openSaved3DCalculation}
+          selectedSavedCalcDetails={selectedSavedCalcDetails}
+          projectId={projectId}
+          tool={tool}
+          setTool={setTool}
+          surfaceMode={surfaceMode}
+          setSurfaceMode={setSurfaceMode}
+          wallFaceMode={wallFaceMode}
+          setWallFaceMode={setWallFaceMode}
+          parallelOffsetCm={parallelOffsetCm}
+          setParallelOffsetCm={setParallelOffsetCm}
+          doorWidthCm={doorWidthCm}
+          setDoorWidthCm={setDoorWidthCm}
+          windowWidthCm={windowWidthCm}
+          setWindowWidthCm={setWindowWidthCm}
+          pointHeight={pointHeight}
+          setPointHeight={setPointHeight}
+          newRouteName={newRouteName}
+          setNewRouteName={setNewRouteName}
+          routeHeight={routeHeight}
+          setRouteHeight={setRouteHeight}
+          routePlacementMode={routePlacementMode}
+          setRoutePlacementMode={setRoutePlacementMode}
+          selectedCircuitId={selectedCircuitId}
+          setSelectedCircuitId={setSelectedCircuitId}
+          circuits={circuits}
+          saveRoute={saveRoute}
+          overwriteSelectedRoute={overwriteSelectedRoute}
+          removeLastNode={removeLastNode}
+          clearRouteDraft={clearRouteDraft}
+          deleteSelectedRoute={deleteSelectedRoute}
+          routePointCount={routePointCount}
+          routeValidationMessages={routeValidationMessages}
+          routeNodesRef={routeNodesRef}
+          updateNodeAtIndex={updateNodeAtIndex}
+          insertNodeAfter={insertNodeAfter}
+          removeNodeAt={removeNodeAt}
+          toCentimeters={toCentimeters}
+          toMeters={toMeters}
+          stats={stats}
+          routeDraftLength={routeDraftLength}
+          readinessText={readinessText}
+          validationStages={validationStages}
+          roomExistingStats={roomExistingStats}
+          selectedRoomCalculation={selectedRoomCalculation}
+          roomPlan={roomPlan}
+          setRoomPlanData={setRoomPlanData}
+          getRouteModeWarning={getRouteModeWarning}
+          undoLastAction={undoLastAction}
+          redoLastAction={redoLastAction}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          loadRouteToDraft={loadRouteToDraft}
+          selectedRouteId={selectedRouteId}
+        />
 
         <section className="floor-plan-3d-canvas">
           {selectedRoom && (
