@@ -63,6 +63,7 @@ public class CableRunService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private static final BigDecimal MIN_SEGMENT_CM = BigDecimal.valueOf(5);
+    /** XY tolerance for wall-opening checks (skip near-vertical segments), not segment-shape rules. */
     private static final BigDecimal ORTHOGONAL_TOLERANCE_CM = BigDecimal.ONE;
     private static final BigDecimal ENDPOINT_SNAP_TOLERANCE_CM = BigDecimal.valueOf(35);
     private static final BigDecimal OPENING_LINE_TOLERANCE_CM = BigDecimal.valueOf(2);
@@ -247,19 +248,11 @@ public class CableRunService {
         for (int i = 1; i < nodes.size(); i++) {
             PointCm prev = nodes.get(i - 1);
             PointCm current = nodes.get(i);
-            BigDecimal dx = current.x().subtract(prev.x()).abs();
-            BigDecimal dy = current.y().subtract(prev.y()).abs();
-            BigDecimal dz = current.z().subtract(prev.z()).abs();
-
-            int changedAxes = 0;
-            if (dx.compareTo(ORTHOGONAL_TOLERANCE_CM) > 0) changedAxes++;
-            if (dy.compareTo(ORTHOGONAL_TOLERANCE_CM) > 0) changedAxes++;
-            if (dz.compareTo(ORTHOGONAL_TOLERANCE_CM) > 0) changedAxes++;
-            if (changedAxes != 1) {
-                throw new BadRequestException("Каждый сегмент трассы должен менять только одну координату (X, Y или Z).");
-            }
-
-            BigDecimal segmentLengthCm = dx.max(dy).max(dz).setScale(2, RoundingMode.HALF_UP);
+            double dxm = current.x().subtract(prev.x()).doubleValue();
+            double dym = current.y().subtract(prev.y()).doubleValue();
+            double dzm = current.z().subtract(prev.z()).doubleValue();
+            double lenCm = Math.sqrt(dxm * dxm + dym * dym + dzm * dzm);
+            BigDecimal segmentLengthCm = BigDecimal.valueOf(lenCm).setScale(2, RoundingMode.HALF_UP);
             if (segmentLengthCm.compareTo(MIN_SEGMENT_CM) < 0) {
                 throw new BadRequestException("Сегмент трассы слишком короткий. Минимум 5 см.");
             }

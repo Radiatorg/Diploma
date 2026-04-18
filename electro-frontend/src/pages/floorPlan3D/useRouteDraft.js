@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { cableRunAPI } from '../../api/api';
 import { isSourcePointByNotes } from './builders3D';
+import { formatSnapRadiusMetersRu, inferRouteSurfaceKindFromHeightM } from './routeConstants';
 
-const ORTHOGONAL_TOLERANCE_M = 0.01;
 const MIN_SEGMENT_M = 0.05;
 
 export function useRouteDraft({
@@ -16,6 +16,7 @@ export function useRouteDraft({
   setSelectedCircuitId,
   selectedRoomId,
   selectedRoomBounds,
+  activeRoomHeightM = 2.8,
   pushHistoryAction,
   loadSceneData,
   addToast,
@@ -37,15 +38,22 @@ export function useRouteDraft({
   const [routeValidationMessages, setRouteValidationMessages] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [routeHeight, setRouteHeight] = useState(30);
-  const [routePlacementMode, setRoutePlacementMode] = useState('wall');
+  const [routePlacementMode, setRoutePlacementMode] = useState('auto');
 
   const getRouteModeHeight = useCallback(() => {
     if (routePlacementMode === 'ceiling') return Math.max(routeHeight, 240);
     if (routePlacementMode === 'floor') return Math.min(routeHeight, 20);
+    if (routePlacementMode === 'auto') return routeHeight;
     return routeHeight;
   }, [routeHeight, routePlacementMode]);
 
   const getRouteModeWarning = useCallback(() => {
+    if (routePlacementMode === 'auto') {
+      if (routeHeight < 10 || routeHeight > 260) {
+        return 'Для резервной привязки к стене (если луч не попал в грань) задайте базовую высоту 10..260 см.';
+      }
+      return '';
+    }
     if (routePlacementMode === 'ceiling' && routeHeight < 240) {
       return 'ТКП: для потолочной прокладки задайте высоту не ниже 240 см.';
     }
@@ -160,24 +168,6 @@ export function useRouteDraft({
     return typeof idx === 'number' ? idx : -1;
   }, [cameraRef, rendererRef]);
 
-  const makeOrthogonalPoint = (nextPoint, forceVertical = false) => {
-    if (routePointsRef.current.length === 0) return nextPoint;
-    const prev = routePointsRef.current[routePointsRef.current.length - 1];
-    if (forceVertical) {
-      return new THREE.Vector3(prev.x, nextPoint.y, prev.z);
-    }
-    const dy = Math.abs(nextPoint.y - prev.y);
-    const dx = Math.abs(nextPoint.x - prev.x);
-    const dz = Math.abs(nextPoint.z - prev.z);
-    if (dy > dx && dy > dz) {
-      return new THREE.Vector3(prev.x, nextPoint.y, prev.z);
-    }
-    if (dx > dz) {
-      return new THREE.Vector3(nextPoint.x, nextPoint.y, prev.z);
-    }
-    return new THREE.Vector3(prev.x, nextPoint.y, nextPoint.z);
-  };
-
   const validateRouteDraft = useCallback(() => {
     const messages = [];
     const points = routePointsRef.current;
@@ -193,15 +183,7 @@ export function useRouteDraft({
       const dx = Math.abs(current.x - prev.x);
       const dy = Math.abs(current.y - prev.y);
       const dz = Math.abs(current.z - prev.z);
-      const changedAxes =
-        (dx > ORTHOGONAL_TOLERANCE_M ? 1 : 0) +
-        (dy > ORTHOGONAL_TOLERANCE_M ? 1 : 0) +
-        (dz > ORTHOGONAL_TOLERANCE_M ? 1 : 0);
-      if (changedAxes !== 1) {
-        messages.push(`Сегмент ${i} должен менять только одну координату (X, Y или Z).`);
-        badSegmentPoints.push([prev.clone(), current.clone()]);
-      }
-      const segmentLength = Math.max(dx, dy, dz);
+      const segmentLength = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (segmentLength < MIN_SEGMENT_M) {
         messages.push(`Сегмент ${i} слишком короткий: минимум 0.05 м.`);
         badSegmentPoints.push([prev.clone(), current.clone()]);
@@ -212,10 +194,10 @@ export function useRouteDraft({
       const start = nodes[0];
       const end = nodes[nodes.length - 1];
       if (!start.pointId) {
-        messages.push('Начало трассы должно быть привязано к электрической точке — подведите первый узел ближе к розетке, выключателю или точке старта (до 35 см).');
+        messages.push(`ТКП 339: оконцевание проводника — в корпусе прибора; наведите курсор на символ (основная привязка). Запасной допуск по проекции на план (X/Z) — до ${formatSnapRadiusMetersRu()} м; нормативные высоты задаются свойствами точки.`);
       }
       if (!end.pointId) {
-        messages.push('Конец трассы должен быть привязан к электрической точке — подведите последний узел ближе к розетке, выключателю или точке старта (до 35 см).');
+        messages.push(`ТКП 339: оконцевание у потребителя — в изделии; наведите курсор на символ. Запасной допуск по проекции на план (X/Z) — до ${formatSnapRadiusMetersRu()} м.`);
       }
       if ((start.symbolType === 'switch' && end.symbolType === 'outlet')
         || (start.symbolType === 'outlet' && end.symbolType === 'switch')) {
@@ -233,8 +215,15 @@ export function useRouteDraft({
         const endPoint = sceneData.points.find((p) => p.id === end.pointId);
         const startIsSource = startPoint ? isSourcePointByNotes(startPoint) : false;
         const endIsSource = endPoint ? isSourcePointByNotes(endPoint) : false;
+        /* ТКП 339: у групповой линии одно начало у щита; второй конец — потребитель, не второй «ввод». */
         if (!startIsSource && !endIsSource) {
-          messages.push('ТКП 339: в помещении есть точка старта (щиток) — трасса должна начинаться или заканчиваться на ней.');
+          messages.push('ТКП 339: в помещении есть щиток — трассу нужно привязать к нему на одном из концов (начало линии от аппарата защиты). Второй конец — на розетке, выключателе или светильнике.');
+        }
+        if (start.pointId && end.pointId && startIsSource && endIsSource && start.pointId !== end.pointId) {
+          messages.push('ТКП 339: нельзя соединять две точки старта (щитка) одной трассой — групповая линия имеет один ввод от щита.');
+        }
+        if (endIsSource && start.pointId !== end.pointId) {
+          messages.push('Конец трассы не задаётся на щитке: окончание проводки — у потребителя. Поставьте щиток (точку старта) у первого узла, последний узел — у розетки, выключателя или светильника.');
         }
       }
       if (start.pointId && end.pointId && !selectedCircuitId) {
@@ -335,8 +324,9 @@ export function useRouteDraft({
         z: Number(((current.z + next.z) / 2).toFixed(4)),
         pointId: null,
         symbolType: null,
+        surfaceKind: 'auto',
       }
-      : { ...current, pointId: null, symbolType: null };
+      : { ...current, pointId: null, symbolType: null, surfaceKind: current.surfaceKind || 'auto' };
     const nextNodes = [...routeNodesRef.current];
     nextNodes.splice(index + 1, 0, inserted);
     rebuildRouteRefsFromNodes(nextNodes);
@@ -417,13 +407,17 @@ export function useRouteDraft({
       const parsed = JSON.parse(route.pathJson);
       if (!Array.isArray(parsed) || parsed.length < 2) return;
       routePointsRef.current = parsed.map((n) => new THREE.Vector3(toMeters(n.x), toMeters(n.z || 0), toMeters(n.y)));
-      routeNodesRef.current = parsed.map((n) => ({
-        x: toMeters(n.x),
-        y: toMeters(n.y),
-        z: toMeters(n.z || 0),
-        pointId: n.pointId || null,
-        symbolType: null,
-      }));
+      routeNodesRef.current = parsed.map((n) => {
+        const zM = toMeters(n.z || 0);
+        return {
+          x: toMeters(n.x),
+          y: toMeters(n.y),
+          z: zM,
+          pointId: n.pointId || null,
+          symbolType: null,
+          surfaceKind: inferRouteSurfaceKindFromHeightM(zM, activeRoomHeightM),
+        };
+      });
       setSelectedRouteId(route.id);
       setNewRouteName(route.notes || '');
       setSelectedCircuitId(route.circuitId ? String(route.circuitId) : '');
@@ -540,7 +534,6 @@ export function useRouteDraft({
     getRouteModeHeight,
     redrawRouteDraft,
     validateRouteDraft,
-    makeOrthogonalPoint,
     clearRouteDraft,
     rebuildRouteRefsFromNodes,
     updateNodeAtIndex,

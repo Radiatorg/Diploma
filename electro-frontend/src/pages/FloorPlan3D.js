@@ -24,6 +24,13 @@ import {
   buildWindowGroup,
   isSourcePointByNotes,
 } from './floorPlan3D/builders3D';
+import {
+  ROUTE_EQUIPMENT_PLANAR_SNAP_RADIUS_M,
+  ROUTE_EQUIPMENT_RAY_HIT_RADIUS_M,
+  inferRouteSurfaceKindFromHeightM,
+} from './floorPlan3D/routeConstants';
+import { expandSurfaceRouteSegment } from './floorPlan3D/surfaceRoutePolyline';
+import { orientElectricalPointGroup } from './floorPlan3D/electricalPointOrientation';
 import './FloorPlan3D.css';
 
 const FloorPlan3D = () => {
@@ -63,7 +70,7 @@ const FloorPlan3D = () => {
   const [circuits, setCircuits] = useState([]);
   const [selectedCircuitId, setSelectedCircuitId] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState(null);
-  const [surfaceMode, setSurfaceMode] = useState('wall');
+  const [surfaceMode, setSurfaceMode] = useState('any');
   const [wallFaceMode, setWallFaceMode] = useState('auto');
   const [wallViewFace, setWallViewFace] = useState('north');
   const [parallelOffsetCm, setParallelOffsetCm] = useState(0);
@@ -97,7 +104,6 @@ const FloorPlan3D = () => {
 
   const toMeters = (value) => Number(value || 0) / 100;
   const toCentimeters = (value) => Number(value || 0) * 100;
-  const SNAP_RADIUS_M = 0.35;
   const WALL_INSET_M = 0.03;
   const ROOM_HEIGHT_M = DEFAULT_ROOM_HEIGHT_M;
   const activeRoomHeightM = selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M;
@@ -202,14 +208,15 @@ const FloorPlan3D = () => {
     }
   }, []);
 
-  const updateGhostPreview = useCallback((toolType, position, roomCenter) => {
+  const updateGhostPreview = useCallback((toolType, position, bounds, roomHeightM) => {
     clearGhostPreview();
     const g = ghostGroupRef.current;
     if (!g || !position) return;
     const ghost = buildGhostGroup(toolType);
-    ghost.position.copy(position);
-    if (roomCenter) {
-      ghost.rotation.y = Math.atan2(roomCenter.x - position.x, roomCenter.z - position.z);
+    if (bounds && roomHeightM != null) {
+      orientElectricalPointGroup(ghost, position.x, position.y, position.z, bounds, roomHeightM, WALL_INSET_M);
+    } else {
+      ghost.position.copy(position);
     }
     g.add(ghost);
   }, [clearGhostPreview]);
@@ -264,9 +271,9 @@ const FloorPlan3D = () => {
         const floorOverlay = new THREE.Mesh(
           new THREE.PlaneGeometry(width, depth),
           new THREE.MeshBasicMaterial({
-            color: floorHovered ? 0xf59e0b : (surfaceMode === 'floor' ? 0x22d3ee : 0x1e293b),
+            color: floorHovered ? 0xf59e0b : (surfaceMode === 'floor' || surfaceMode === 'any' ? 0x22d3ee : 0x1e293b),
             transparent: true,
-            opacity: floorHovered ? 0.42 : (surfaceMode === 'floor' ? 0.34 : 0.14),
+            opacity: floorHovered ? 0.42 : (surfaceMode === 'floor' ? 0.34 : surfaceMode === 'any' ? 0.28 : 0.14),
             side: THREE.DoubleSide,
           })
         );
@@ -280,9 +287,9 @@ const FloorPlan3D = () => {
         const ceilingOverlay = new THREE.Mesh(
           new THREE.PlaneGeometry(width, depth),
           new THREE.MeshBasicMaterial({
-            color: ceilingHovered ? 0xf59e0b : (surfaceMode === 'ceiling' ? 0xfacc15 : 0x334155),
+            color: ceilingHovered ? 0xf59e0b : (surfaceMode === 'ceiling' || surfaceMode === 'any' ? 0xfacc15 : 0x334155),
             transparent: true,
-            opacity: ceilingHovered ? 0.42 : (surfaceMode === 'ceiling' ? 0.3 : 0.12),
+            opacity: ceilingHovered ? 0.42 : (surfaceMode === 'ceiling' ? 0.3 : surfaceMode === 'any' ? 0.24 : 0.12),
             side: THREE.DoubleSide,
           })
         );
@@ -329,7 +336,7 @@ const FloorPlan3D = () => {
             new THREE.MeshBasicMaterial({
               color: wallPlane.color,
               transparent: true,
-              opacity: hoveredWallFace === wallPlane.key ? 0.38 : (surfaceMode === 'wall' ? 0.22 : 0.1),
+              opacity: hoveredWallFace === wallPlane.key ? 0.38 : (surfaceMode === 'wall' || surfaceMode === 'any' ? 0.2 : 0.1),
               side: THREE.DoubleSide,
             })
           );
@@ -411,26 +418,28 @@ const FloorPlan3D = () => {
     });
 
     sceneData.points.forEach((point) => {
-      if (selectedRoomId && point.roomId !== selectedRoomId) return;
+      if (selectedRoomId != null && String(point.roomId) !== String(selectedRoomId)) return;
       const x = toMeters(point.positionX);
       const z = toMeters(point.positionY);
       const y = Math.max(toMeters(point.heightFromFloor || 30), 0.05);
 
       const group = buildPointGroup(point);
-      group.position.set(x, y, z);
 
       const pRoom = sceneData.rooms.find((r) => r.id === point.roomId);
       const pBounds = getRoomBounds(pRoom);
+      const roomHForPoint = pRoom
+        ? (roomHeightById[pRoom.id] || (pRoom.id === selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M))
+        : ROOM_HEIGHT_M;
       if (pBounds) {
-        const rcX = (pBounds.minX + pBounds.maxX) / 2;
-        const rcZ = (pBounds.minZ + pBounds.maxZ) / 2;
-        group.rotation.y = Math.atan2(rcX - x, rcZ - z);
+        orientElectricalPointGroup(group, x, y, z, pBounds, roomHForPoint, WALL_INSET_M);
+      } else {
+        group.position.set(x, y, z);
       }
 
       group.castShadow = true;
       group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
 
-      const hitGeo = new THREE.SphereGeometry(0.11, 8, 8);
+      const hitGeo = new THREE.SphereGeometry(ROUTE_EQUIPMENT_RAY_HIT_RADIUS_M, 8, 8);
       const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
       const hitMesh = new THREE.Mesh(hitGeo, hitMat);
       hitMesh.userData = { pointData: point, pointGroup: group };
@@ -749,6 +758,26 @@ const FloorPlan3D = () => {
     };
   }, []);
 
+  /** Только вертикальные грани комнаты (без оверлеев пола/потолка) — для режима «Стены». */
+  const getPointerVerticalWallHit = useCallback((event) => {
+    if (!rendererRef.current || !cameraRef.current || wallHoverMeshesRef.current.length === 0) return null;
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const intersects = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
+    const wallFaces = ['north', 'south', 'east', 'west'];
+    const hit = intersects.find((h) => wallFaces.includes(h.object?.userData?.wallFace));
+    if (!hit) return null;
+    return {
+      point: hit.point,
+      wallFace: hit.object?.userData?.wallFace || null,
+    };
+  }, []);
+
   const getDistanceToNearestCorner = useCallback((point, bounds) => {
     if (!point || !bounds) return null;
     const corners = [
@@ -814,6 +843,76 @@ const FloorPlan3D = () => {
     [getRoomBounds, sceneData.walls, selectedRoom]
   );
 
+  /**
+   * Грань под курсором для трассы: ближайшее пересечение луча (меши комнаты + плоскости пола/потолка).
+   * Не зависит от «Рабочая поверхность» — только от геометрии луча (согласование с pickRouteSurfaceAlongRay).
+   */
+  const getRoutePointerHoverFace = useCallback((event) => {
+    if (!rendererRef.current || !cameraRef.current || !selectedRoomBounds) return null;
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const ray = raycaster.ray;
+    const floorY = 0.05;
+    const ceilY = Math.max(activeRoomHeightM, 0.2) - 0.05;
+    const clampXZ = (x, z) => ({
+      x: Math.min(Math.max(x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M),
+      z: Math.min(Math.max(z, selectedRoomBounds.minZ + WALL_INSET_M), selectedRoomBounds.maxZ - WALL_INSET_M),
+    });
+    const candidates = [];
+    if (wallHoverMeshesRef.current.length > 0) {
+      const hits = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
+      if (hits.length > 0) {
+        const wf = hits[0].object?.userData?.wallFace;
+        if (wf) candidates.push({ face: wf, dist: hits[0].distance });
+      }
+    }
+    const fp = new THREE.Vector3();
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
+    if (ray.intersectPlane(floorPlane, fp)) {
+      const c = clampXZ(fp.x, fp.z);
+      const pt = new THREE.Vector3(c.x, floorY, c.z);
+      if (isPointInsideBounds(pt, selectedRoomBounds)) {
+        candidates.push({ face: 'floor', dist: ray.origin.distanceTo(pt) });
+      }
+    }
+    const cp = new THREE.Vector3();
+    const ceilPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -ceilY);
+    if (ray.intersectPlane(ceilPlane, cp)) {
+      const c = clampXZ(cp.x, cp.z);
+      const pt = new THREE.Vector3(c.x, ceilY, c.z);
+      if (isPointInsideBounds(pt, selectedRoomBounds)) {
+        candidates.push({ face: 'ceiling', dist: ray.origin.distanceTo(pt) });
+      }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates[0].face;
+  }, [activeRoomHeightM, isPointInsideBounds, selectedRoomBounds, WALL_INSET_M]);
+
+  /**
+   * Режим «Все поверхности»: сначала явное попадание в меш пола/потолка/стены (как при «Стены»),
+   * иначе ближайшая грань из getRoutePointerHoverFace (меши + плоскости).
+   */
+  const resolveAnyModePointer = useCallback((event) => {
+    const hf = getPointerWallFace(event);
+    const rf = getRoutePointerHoverFace(event);
+    if (hf === 'floor' || hf === 'ceiling') {
+      return { kind: hf, faceForUi: hf };
+    }
+    if (rf === 'floor' || rf === 'ceiling') {
+      return { kind: rf, faceForUi: rf };
+    }
+    const wallFace = hf && ['north', 'south', 'east', 'west'].includes(hf)
+      ? hf
+      : (rf && ['north', 'south', 'east', 'west'].includes(rf) ? rf : hf ?? rf);
+    return { kind: 'wall', faceForUi: wallFace || 'north' };
+  }, [getPointerWallFace, getRoutePointerHoverFace]);
+
   const routeDraftApi = useRouteDraft({
     projectId,
     routesGroupRef,
@@ -824,6 +923,7 @@ const FloorPlan3D = () => {
     setSelectedCircuitId,
     selectedRoomId,
     selectedRoomBounds,
+    activeRoomHeightM,
     pushHistoryAction,
     loadSceneData,
     addToast,
@@ -852,7 +952,6 @@ const FloorPlan3D = () => {
     getRouteModeHeight,
     redrawRouteDraft,
     validateRouteDraft,
-    makeOrthogonalPoint,
     clearRouteDraft,
     updateNodeAtIndex,
     insertNodeAfter,
@@ -865,25 +964,55 @@ const FloorPlan3D = () => {
     pickRouteHandleIndex,
   } = routeDraftApi;
 
-  const findNearestExistingPoint = (candidate, pointsForSnap = sceneData.points) => {
+  /** Прямое попадание луча в невидимую сферу электрической точки — надёжнее привязки только по расстоянию на плане. */
+  const snapRouteNodeFromElectricalRay = (event) => {
+    if (!rendererRef.current || !cameraRef.current || pointHoverMeshesRef.current.length === 0) return null;
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const hits = raycaster.intersectObjects(pointHoverMeshesRef.current, false);
+    if (!hits.length) return null;
+    const pointData = hits[0].object?.userData?.pointData;
+    if (!pointData) return null;
+    const px = toMeters(pointData.positionX);
+    const pz = toMeters(pointData.positionY);
+    const py = Math.max(toMeters(pointData.heightFromFloor || routeHeight), 0.05);
+    return {
+      point: new THREE.Vector3(px, py, pz),
+      pointId: pointData.id,
+      symbolType: pointData?.electricalSymbol?.type || '',
+    };
+  };
+
+  const findNearestExistingPoint = (
+    candidate,
+    pointsForSnap = sceneData.points,
+    maxRadiusM = ROUTE_EQUIPMENT_PLANAR_SNAP_RADIUS_M,
+  ) => {
     let nearest = null;
     let minDistance = Number.POSITIVE_INFINITY;
     pointsForSnap.forEach((point) => {
       const px = toMeters(point.positionX);
       const pz = toMeters(point.positionY);
+      const py = Math.max(toMeters(point.heightFromFloor || routeHeight), 0.05);
+      /* По плану (X/Z): клик по стене часто не совпадает по Y с высотой прибора — оконцевание задаём по координатам точки (ТКП: в корпусе изделия). */
       const distance = Math.hypot(candidate.x - px, candidate.z - pz);
       if (distance < minDistance) {
         minDistance = distance;
         nearest = {
           x: px,
           z: pz,
-          y: Math.max(toMeters(point.heightFromFloor || routeHeight), 0.05),
+          y: py,
           pointId: point.id,
           symbolType: point?.electricalSymbol?.type || '',
         };
       }
     });
-    if (!nearest || minDistance > SNAP_RADIUS_M) {
+    if (!nearest || minDistance > maxRadiusM) {
       return { point: candidate, pointId: null, symbolType: null };
     }
     return {
@@ -891,6 +1020,13 @@ const FloorPlan3D = () => {
       pointId: nearest.pointId,
       symbolType: nearest.symbolType,
     };
+  };
+
+  /** Превью трассы: только луч в символ — без «магнита» по плану. */
+  const snapRouteEquipmentForPreview = (event, surfaceFallbackPoint) => {
+    const ray = snapRouteNodeFromElectricalRay(event);
+    if (ray?.pointId) return ray;
+    return { point: surfaceFallbackPoint.clone(), pointId: null, symbolType: null };
   };
 
   useEffect(() => {
@@ -937,19 +1073,175 @@ const FloorPlan3D = () => {
 
   const snapPointToSurface = useCallback((point, preferredHeightCm = pointHeight, effectiveSurface = surfaceMode) => {
     if (!point || !selectedRoomBounds) return null;
+    let surface = effectiveSurface;
+    if (surface === 'any' || surface == null) {
+      if (point.y <= 0.12) surface = 'floor';
+      else if (point.y >= activeRoomHeightM - 0.15) surface = 'ceiling';
+      else surface = 'wall';
+    }
     const clampedX = Math.min(Math.max(point.x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M);
     const clampedZ = Math.min(Math.max(point.z, selectedRoomBounds.minZ + WALL_INSET_M), selectedRoomBounds.maxZ - WALL_INSET_M);
-    if (effectiveSurface === 'floor') {
+    if (surface === 'floor') {
       return new THREE.Vector3(clampedX, 0.05, clampedZ);
     }
-    if (effectiveSurface === 'ceiling') {
+    if (surface === 'ceiling') {
       return new THREE.Vector3(clampedX, activeRoomHeightM - 0.05, clampedZ);
     }
     return getWallSnapPointFromBounds(new THREE.Vector3(clampedX, 0, clampedZ), selectedRoomBounds, Math.max(toMeters(preferredHeightCm), 0.05));
   }, [WALL_INSET_M, activeRoomHeightM, getWallSnapPointFromBounds, pointHeight, selectedRoomBounds, surfaceMode, toMeters]);
 
+  /** Высота установки на стене по вертикали попадания луча (см), а не по полю «Высота точки». */
+  const getWallSnapPreferredHeightCm = useCallback((basePoint) => {
+    if (!basePoint) return pointHeight;
+    const yM = Math.min(Math.max(basePoint.y, 0.05), activeRoomHeightM - 0.02);
+    return Math.round(toCentimeters(yM));
+  }, [activeRoomHeightM, pointHeight, toCentimeters]);
+
+  /**
+   * Узел трассы — только на грани комнаты: луч к ближайшему попаданию (стена | пол | потолок) или срез у стены по базовой высоте.
+   * modeFilter: auto — все варианты; иначе только выбранная поверхность.
+   * pickContext: в режиме auto при согласованном наведении сужаем кандидатов (та же грань или явный переход стена↔пол/потолок по подсветке грани).
+   */
+  const pickRouteSurfaceAlongRay = useCallback((event, modeFilter = 'auto', pickContext = {}) => {
+    if (!rendererRef.current || !cameraRef.current || !selectedRoomBounds || !sceneData.floorPlan) return null;
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const ray = raycaster.ray;
+
+    const allow = (kind) => modeFilter === 'auto' || modeFilter === kind;
+
+    const candidates = [];
+    const floorY = 0.05;
+    const ceilY = Math.max(activeRoomHeightM, 0.2) - 0.05;
+
+    const clampXZ = (x, z) => ({
+      x: Math.min(Math.max(x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M),
+      z: Math.min(Math.max(z, selectedRoomBounds.minZ + WALL_INSET_M), selectedRoomBounds.maxZ - WALL_INSET_M),
+    });
+
+    if (wallHoverMeshesRef.current.length > 0) {
+      const hits = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
+      if (hits.length > 0) {
+        const h = hits[0];
+        const p = h.point.clone();
+        if (isPointInsideBounds(p, selectedRoomBounds)) {
+          const faceTag = h.object?.userData?.wallFace;
+          const yClamped = Math.min(Math.max(p.y, floorY + 0.02), activeRoomHeightM - 0.02);
+          const c = clampXZ(p.x, p.z);
+          if (faceTag === 'floor' && allow('floor')) {
+            candidates.push({ kind: 'floor', dist: h.distance, point: new THREE.Vector3(c.x, floorY, c.z) });
+          } else if (faceTag === 'ceiling' && allow('ceiling')) {
+            candidates.push({ kind: 'ceiling', dist: h.distance, point: new THREE.Vector3(c.x, ceilY, c.z) });
+          } else if (faceTag && !['floor', 'ceiling'].includes(faceTag) && allow('wall')) {
+            const wallSnapped = getWallSnapPointFromBounds(
+              new THREE.Vector3(p.x, 0, p.z),
+              selectedRoomBounds,
+              yClamped,
+            );
+            candidates.push({ kind: 'wall', dist: h.distance, point: wallSnapped });
+          }
+        }
+      }
+    }
+
+    if (allow('floor')) {
+      const fp = new THREE.Vector3();
+      const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
+      if (ray.intersectPlane(floorPlane, fp)) {
+        const c = clampXZ(fp.x, fp.z);
+        const pt = new THREE.Vector3(c.x, floorY, c.z);
+        if (isPointInsideBounds(pt, selectedRoomBounds)) {
+          candidates.push({ kind: 'floor', dist: ray.origin.distanceTo(pt), point: pt });
+        }
+      }
+    }
+
+    if (allow('ceiling')) {
+      const cp = new THREE.Vector3();
+      const ceilPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -ceilY);
+      if (ray.intersectPlane(ceilPlane, cp)) {
+        const c = clampXZ(cp.x, cp.z);
+        const pt = new THREE.Vector3(c.x, ceilY, c.z);
+        if (isPointInsideBounds(pt, selectedRoomBounds)) {
+          candidates.push({ kind: 'ceiling', dist: ray.origin.distanceTo(pt), point: pt });
+        }
+      }
+    }
+
+    if (allow('wall')) {
+      const routeH = Math.max(toMeters(getRouteModeHeight()), 0.05);
+      const slice = new THREE.Vector3();
+      const slicePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -routeH);
+      if (ray.intersectPlane(slicePlane, slice) && isPointInsideBounds(slice, selectedRoomBounds)) {
+        const wallSnapped = getWallSnapPointFromBounds(slice, selectedRoomBounds, routeH);
+        if (wallSnapped && isPointInsideBounds(wallSnapped, selectedRoomBounds)) {
+          candidates.push({ kind: 'wall', dist: ray.origin.distanceTo(wallSnapped), point: wallSnapped });
+        }
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    const { lastSurfaceKind = null, hoverFace = null } = pickContext;
+    let pool = candidates;
+    if (modeFilter === 'auto' && lastSurfaceKind && hoverFace) {
+      const wallFaces = ['north', 'south', 'east', 'west'];
+      /* Тот же тип поверхности + наведение на неё — удерживаем трассу на ней (не перехватывает пол по расстоянию). */
+      const wantWall = lastSurfaceKind === 'wall' && wallFaces.includes(hoverFace);
+      const wantFloor = lastSurfaceKind === 'floor' && hoverFace === 'floor';
+      const wantCeil = lastSurfaceKind === 'ceiling' && hoverFace === 'ceiling';
+      /* Переход на другую грань по наведению (стена→пол/потолок и обратно), иначе горизонтальный срез стены «перебивает» пол. */
+      const toFloorFromWall = lastSurfaceKind === 'wall' && hoverFace === 'floor';
+      const toCeilFromWall = lastSurfaceKind === 'wall' && hoverFace === 'ceiling';
+      const toWallFromFloor = lastSurfaceKind === 'floor' && wallFaces.includes(hoverFace);
+      const toWallFromCeil = lastSurfaceKind === 'ceiling' && wallFaces.includes(hoverFace);
+      const toFloorFromCeil = lastSurfaceKind === 'ceiling' && hoverFace === 'floor';
+      const toCeilFromFloor = lastSurfaceKind === 'floor' && hoverFace === 'ceiling';
+
+      if (wantWall) {
+        const ws = candidates.filter((c) => c.kind === 'wall');
+        if (ws.length) pool = ws;
+      } else if (wantFloor) {
+        const fs = candidates.filter((c) => c.kind === 'floor');
+        if (fs.length) pool = fs;
+      } else if (wantCeil) {
+        const cs = candidates.filter((c) => c.kind === 'ceiling');
+        if (cs.length) pool = cs;
+      } else if (toFloorFromWall || toFloorFromCeil) {
+        const fs = candidates.filter((c) => c.kind === 'floor');
+        if (fs.length) pool = fs;
+      } else if (toCeilFromWall || toCeilFromFloor) {
+        const cs = candidates.filter((c) => c.kind === 'ceiling');
+        if (cs.length) pool = cs;
+      } else if (toWallFromFloor || toWallFromCeil) {
+        const ws = candidates.filter((c) => c.kind === 'wall');
+        if (ws.length) pool = ws;
+      }
+    }
+
+    pool.sort((a, b) => a.dist - b.dist);
+    const best = pool[0];
+    return { kind: best.kind, point: best.point };
+  }, [
+    activeRoomHeightM,
+    getRouteModeHeight,
+    getWallSnapPointFromBounds,
+    isPointInsideBounds,
+    sceneData.floorPlan,
+    selectedRoomBounds,
+    toMeters,
+    WALL_INSET_M,
+  ]);
+
   const selectedRoomPoints = useMemo(
-    () => (selectedRoomId ? sceneData.points.filter((point) => point.roomId === selectedRoomId) : []),
+    () => (selectedRoomId != null && selectedRoomId !== ''
+      ? sceneData.points.filter((point) => String(point.roomId) === String(selectedRoomId))
+      : []),
     [sceneData.points, selectedRoomId]
   );
 
@@ -1102,22 +1394,37 @@ const FloorPlan3D = () => {
       return;
     }
 
-    // Determine effective surface: hover takes priority over surfaceMode selector
-    const effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
-      ? hoveredWallFace
-      : surfaceMode;
+    // Determine effective surface: «Все поверхности» — по ближайшей грани луча; иначе наведение пол/потолок или режим.
+    let effectiveSurface;
+    if (tool === 'add-light') {
+      effectiveSurface = 'ceiling';
+    } else if (surfaceMode === 'any') {
+      effectiveSurface = resolveAnyModePointer(event).kind;
+    } else if (surfaceMode === 'wall') {
+      /* Только стены: пол/потолок — через режим «Все поверхности» или отдельно «Пол» / «Потолок». */
+      effectiveSurface = 'wall';
+    } else {
+      effectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
+        ? hoveredWallFace
+        : surfaceMode;
+    }
 
     // Get the best 3D click point for each surface type.
     // For walls when looking from inside the room, getGroundIntersection fails because
     // a near-horizontal ray lands far outside bounds. We use the wall mesh hit instead.
     const getBasePoint = () => {
       if (effectiveSurface === 'ceiling') {
-        return getIntersectionOnHeight(event, activeRoomHeightM - 0.05)
-          ?? getGroundIntersection(event);
+        const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
+        if (tool === 'add-light') {
+          return ceilingHit;
+        }
+        return ceilingHit ?? getGroundIntersection(event);
       }
       if (effectiveSurface === 'wall') {
-        // Wall mesh raycast works from any camera angle, including inside the room
-        const wallHit = getPointerWallHit(event);
+        // Режим «Стены»: не цепляемся к оверлею пола/потолка — только вертикальные грани.
+        const wallHit = surfaceMode === 'wall'
+          ? getPointerVerticalWallHit(event)
+          : getPointerWallHit(event);
         if (wallHit?.point) return wallHit.point;
         // Fallback: project to a mid-height plane (less accurate but better than y=0)
         return getIntersectionOnHeight(event, Math.max(toMeters(pointHeight), 0.3))
@@ -1128,7 +1435,12 @@ const FloorPlan3D = () => {
     };
 
     const basePoint = getBasePoint();
-    if (!basePoint) return;
+    if (!basePoint) {
+      if (tool === 'add-light') {
+        addToast('Светильник размещается только на потолке: наведите курсор на потолок комнаты и кликните.', 'warn');
+      }
+      return;
+    }
 
     const roomBoundedTools = ['add-source', 'add-outlet', 'add-switch', 'add-light', 'draw-route'];
     if (roomBoundedTools.includes(tool)) {
@@ -1159,8 +1471,14 @@ const FloorPlan3D = () => {
       }
 
       if (tool === 'add-switch') {
-        if (pointHeight < 80 || pointHeight > 170) {
-          addToast(`ТКП 8.5.9: выключатель — высота 0.8–1.7 м. Сейчас: ${pointHeight} см. Измените «Высота точки».`, 'warn');
+        const switchHeightCm = effectiveSurface === 'wall'
+          ? getWallSnapPreferredHeightCm(basePoint)
+          : Math.round(toCentimeters(Math.min(Math.max(basePoint.y, 0.05), activeRoomHeightM - 0.02)));
+        if (switchHeightCm < 80 || switchHeightCm > 170) {
+          addToast(
+            `ТКП 8.5.9: выключатель — высота 0.8–1.7 м от пола. По клику: ${switchHeightCm} см. Наведите на стену на нужной высоте.`,
+            'warn',
+          );
           return;
         }
         // ТКП 8.5.9 / 8.7.4: выключатели запрещены в мокрых зонах (зоны 0, 1, 2 — ванная, душевая, сауна)
@@ -1176,12 +1494,6 @@ const FloorPlan3D = () => {
             addToast('ТКП 8.5.6/8.7.4: розетка в мокрой зоне — выберите цепь с УЗО ≤ 30 мА.', 'warn');
             return;
           }
-        }
-        // ТКП: в детских комнатах розетки устанавливаются на высоте 1.8 м от пола
-        if (isChildrenRoom(selectedRoomId) && pointHeight !== 180) {
-          addToast(`ТКП 7.1.48: в детских комнатах розетки должны быть на высоте 1.8 м (180 см). Высота скорректирована.`, 'warn');
-          setPointHeight(180);
-          return;
         }
       }
 
@@ -1201,9 +1513,16 @@ const FloorPlan3D = () => {
           ? 'switch'
           : 'light';
       try {
-        const snappedSurfacePoint = snapPointToSurface(basePoint, pointHeight, effectiveSurface);
+        const preferredHeightForSnap =
+          effectiveSurface === 'wall' ? getWallSnapPreferredHeightCm(basePoint) : pointHeight;
+        const snappedSurfacePoint = snapPointToSurface(basePoint, preferredHeightForSnap, effectiveSurface);
         if (!snappedSurfacePoint || !isPointInsideBounds(snappedSurfacePoint, selectedRoomBounds)) {
-          addToast('Не удалось привязать точку к поверхности. Наведите на стену, пол или потолок и кликните.', 'warn');
+          addToast(
+            tool === 'add-light'
+              ? 'Не удалось привязать светильник к потолку. Наведите на потолок внутри комнаты и кликните.'
+              : 'Не удалось привязать точку к поверхности. Наведите на стену, пол или потолок и кликните.',
+            'warn',
+          );
           return;
         }
         const payload = {
@@ -1213,7 +1532,11 @@ const FloorPlan3D = () => {
           positionY: Number(toCentimeters(snappedSurfacePoint.z).toFixed(2)),
           heightFromFloor: Number(
             tool === 'add-source'
-              ? (effectiveSurface === 'ceiling' ? toCentimeters(activeRoomHeightM - 0.05) : effectiveSurface === 'floor' ? 5 : Math.max(pointHeight, 120))
+              ? (effectiveSurface === 'ceiling'
+                ? toCentimeters(activeRoomHeightM - 0.05)
+                : effectiveSurface === 'floor'
+                  ? 5
+                  : Math.max(Number(toCentimeters(snappedSurfacePoint.y).toFixed(0)), 120))
               : Number(toCentimeters(snappedSurfacePoint.y).toFixed(0))
           ),
           ...(selectedRoomId ? { roomId: selectedRoomId } : {}),
@@ -1249,62 +1572,89 @@ const FloorPlan3D = () => {
     }
 
     if (tool === 'draw-route') {
-      // Routes use routePlacementMode (independent of surfaceMode)
-      const routeEffectiveSurface = (hoveredWallFace === 'floor' || hoveredWallFace === 'ceiling')
-        ? hoveredWallFace
-        : routePlacementMode;
-
-      // Get route-specific base point using appropriate intersection for the route surface
-      const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
-      let routeBasePoint;
-      if (routeEffectiveSurface === 'ceiling') {
-        routeBasePoint = getIntersectionOnHeight(event, activeRoomHeightM - 0.05) ?? getGroundIntersection(event);
-      } else if (routeEffectiveSurface === 'floor') {
-        routeBasePoint = getGroundIntersection(event);
-      } else {
-        const wallHit = getPointerWallHit(event);
-        routeBasePoint = wallHit?.point
-          ?? getIntersectionOnHeight(event, routeHeightM)
-          ?? getGroundIntersection(event);
-      }
-      if (!routeBasePoint) return;
-      if (!isPointInsideBounds(routeBasePoint, selectedRoomBounds)) {
-        addToast('Узел трассы должен находиться в пределах выбранной комнаты.', 'warn');
+      const mode = routePlacementMode;
+      const lastForPick = routeNodesRef.current.length
+        ? routeNodesRef.current[routeNodesRef.current.length - 1]
+        : null;
+      const picked = pickRouteSurfaceAlongRay(event, mode, {
+        lastSurfaceKind: lastForPick?.surfaceKind ?? null,
+        hoverFace: getRoutePointerHoverFace(event),
+      });
+      if (!picked) {
+        addToast('Наведите курсор на стену, пол или потолок комнаты (узел не в пустоте).', 'warn');
         return;
       }
+      const pickKind = picked.kind;
+      let surfaceKind = picked.kind;
+      const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
+      let routeBasePoint = picked.point.clone();
 
-      let snapped = snapPointToSurface(routeBasePoint, getRouteModeHeight(), routeEffectiveSurface);
-      if (!snapped) return;
+      const snapProbe = new THREE.Vector3(routeBasePoint.x, routeBasePoint.y, routeBasePoint.z);
+      const raySnap = snapRouteNodeFromElectricalRay(event);
+      let snappedPointResult = raySnap?.pointId ? raySnap : findNearestExistingPoint(snapProbe, selectedRoomPoints);
+      if (!snappedPointResult.pointId && picked.kind === 'wall') {
+        const wallHitSnap = getPointerWallHit(event);
+        if (wallHitSnap?.point) {
+          const whProbe = new THREE.Vector3(wallHitSnap.point.x, routeHeightM, wallHitSnap.point.z);
+          const whRes = findNearestExistingPoint(whProbe, selectedRoomPoints);
+          if (whRes.pointId) snappedPointResult = whRes;
+        }
+      }
+      let snapped;
+      if (snappedPointResult.pointId) {
+        snapped = snappedPointResult.point.clone();
+        surfaceKind = inferRouteSurfaceKindFromHeightM(snapped.y, activeRoomHeightM);
+      } else {
+        snapped = routeBasePoint;
+      }
       if (!isPointInsideBounds(snapped, selectedRoomBounds)) {
         addToast('Узел трассы должен находиться в пределах выбранной комнаты.', 'warn');
         return;
       }
-      const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
-      snapped = snappedPointResult.point;
-      // If the route starts from an existing electrical point (especially source),
-      // sync route base height to that point so continuation does not "drop" by Y.
       if (routePointsRef.current.length === 0 && snappedPointResult.pointId) {
         const snappedHeightCm = Number(toCentimeters(snapped.y).toFixed(0));
         if (Number.isFinite(snappedHeightCm)) {
           setRouteHeight(snappedHeightCm);
         }
       }
-      // For wall routing, keep the previous segment height by default.
-      // Vertical transitions should be explicit (Shift + click).
-      if (routeEffectiveSurface === 'wall' && routePointsRef.current.length > 0 && !event.shiftKey) {
-        const prev = routePointsRef.current[routePointsRef.current.length - 1];
-        snapped = new THREE.Vector3(snapped.x, prev.y, snapped.z);
+      if (routePointsRef.current.length === 0) {
+        routePointsRef.current.push(new THREE.Vector3(snapped.x, snapped.y, snapped.z));
+        routeNodesRef.current.push({
+          x: snapped.x,
+          y: snapped.z,
+          z: snapped.y,
+          pointId: snappedPointResult.pointId,
+          symbolType: snappedPointResult.symbolType,
+          surfaceKind,
+        });
+      } else {
+        const prevPt = routePointsRef.current[routePointsRef.current.length - 1];
+        const chain = expandSurfaceRouteSegment(
+          prevPt,
+          snapped,
+          selectedRoomBounds,
+          activeRoomHeightM,
+          WALL_INSET_M,
+          {
+            placementMode: routePlacementMode,
+            fromSurfaceKind: lastForPick?.surfaceKind,
+            toSurfaceKind: pickKind,
+          },
+        );
+        for (let i = 1; i < chain.length; i += 1) {
+          const pt = chain[i];
+          const isLast = i === chain.length - 1;
+          routePointsRef.current.push(pt.clone());
+          routeNodesRef.current.push({
+            x: pt.x,
+            y: pt.z,
+            z: pt.y,
+            pointId: isLast ? snappedPointResult.pointId : null,
+            symbolType: isLast ? snappedPointResult.symbolType : null,
+            surfaceKind: inferRouteSurfaceKindFromHeightM(pt.y, activeRoomHeightM),
+          });
+        }
       }
-      const forceVertical = event.shiftKey;
-      snapped = makeOrthogonalPoint(snapped, forceVertical);
-      routePointsRef.current.push(new THREE.Vector3(snapped.x, snapped.y, snapped.z));
-      routeNodesRef.current.push({
-        x: snapped.x,
-        y: snapped.z,
-        z: snapped.y,
-        pointId: snappedPointResult.pointId,
-        symbolType: snappedPointResult.symbolType,
-      });
       redrawRouteDraft();
       validateRouteDraft();
     }
@@ -1500,27 +1850,41 @@ const FloorPlan3D = () => {
       setHoveredWallFace(hoveredFace);
     }
 
+    const anyPointer = surfaceMode === 'any' ? resolveAnyModePointer(event) : null;
+    const verticalWallOnly = surfaceMode === 'wall' ? getPointerVerticalWallHit(event) : null;
+    const workingFace = surfaceMode === 'any'
+      ? anyPointer.faceForUi
+      : surfaceMode === 'wall'
+        ? verticalWallOnly?.wallFace ?? null
+        : hoveredFace;
+
     if (selectedRoomBounds) {
       let contextPoint = null;
       let surfaceLabel = 'Пол';
 
-      if (hoveredFace === 'floor') {
-        const groundHit = getGroundIntersection(event);
-        if (groundHit && isPointInsideBounds(groundHit, selectedRoomBounds)) {
-          contextPoint = new THREE.Vector3(groundHit.x, 0.05, groundHit.z);
-          surfaceLabel = 'Пол';
-        }
-      } else if (hoveredFace === 'ceiling') {
+      if (tool === 'add-light') {
         const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
         if (ceilingHit && isPointInsideBounds(ceilingHit, selectedRoomBounds)) {
           contextPoint = new THREE.Vector3(ceilingHit.x, activeRoomHeightM - 0.05, ceilingHit.z);
           surfaceLabel = 'Потолок';
         }
-      } else if (hoveredFace) {
-        const wallHit = getPointerWallHit(event);
+      } else if (workingFace === 'floor') {
+        const groundHit = getGroundIntersection(event);
+        if (groundHit && isPointInsideBounds(groundHit, selectedRoomBounds)) {
+          contextPoint = new THREE.Vector3(groundHit.x, 0.05, groundHit.z);
+          surfaceLabel = 'Пол';
+        }
+      } else if (workingFace === 'ceiling') {
+        const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
+        if (ceilingHit && isPointInsideBounds(ceilingHit, selectedRoomBounds)) {
+          contextPoint = new THREE.Vector3(ceilingHit.x, activeRoomHeightM - 0.05, ceilingHit.z);
+          surfaceLabel = 'Потолок';
+        }
+      } else if (workingFace) {
+        const wallHit = surfaceMode === 'wall' ? verticalWallOnly : getPointerWallHit(event);
         if (wallHit?.point) {
           contextPoint = wallHit.point;
-          surfaceLabel = getWallFaceLabel(hoveredFace);
+          surfaceLabel = getWallFaceLabel(workingFace);
         }
       } else if (surfaceMode === 'ceiling') {
         const ceilingHit = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
@@ -1538,7 +1902,7 @@ const FloorPlan3D = () => {
           }
         }
       } else {
-        const wallHit = getPointerWallHit(event);
+        const wallHit = surfaceMode === 'wall' ? getPointerVerticalWallHit(event) : getPointerWallHit(event);
         if (wallHit?.point) {
           contextPoint = wallHit.point;
           if (wallHit.wallFace) {
@@ -1570,19 +1934,28 @@ const FloorPlan3D = () => {
       const pointPlacementTools = ['add-outlet', 'add-switch', 'add-light', 'add-source'];
       const openingTools = ['add-door', 'add-window'];
       if (pointPlacementTools.includes(tool) && !objectContext) {
-        const ghostSurface = (hoveredFace === 'floor' || hoveredFace === 'ceiling') ? hoveredFace : surfaceMode;
-        const snapBase = contextPoint ?? (hoveredFace === 'floor' ? getGroundIntersection(event) : null);
+        const ghostSurface = tool === 'add-light'
+          ? 'ceiling'
+          : (surfaceMode === 'any'
+            ? (anyPointer.kind === 'floor' || anyPointer.kind === 'ceiling' ? anyPointer.kind : 'wall')
+            : surfaceMode === 'wall'
+              ? 'wall'
+              : ((hoveredFace === 'floor' || hoveredFace === 'ceiling') ? hoveredFace : surfaceMode));
+        let snapBase = null;
+        if (tool === 'add-light') {
+          const ch = getIntersectionOnHeight(event, activeRoomHeightM - 0.05);
+          if (ch && isPointInsideBounds(ch, selectedRoomBounds)) {
+            snapBase = new THREE.Vector3(ch.x, activeRoomHeightM - 0.05, ch.z);
+          }
+        } else {
+          snapBase = contextPoint ?? (workingFace === 'floor' ? getGroundIntersection(event) : null);
+        }
         if (snapBase) {
-          const snappedPos = snapPointToSurface(snapBase, pointHeight, ghostSurface);
+          const ghostPreferredHeight =
+            ghostSurface === 'wall' ? getWallSnapPreferredHeightCm(snapBase) : pointHeight;
+          const snappedPos = snapPointToSurface(snapBase, ghostPreferredHeight, ghostSurface);
           if (snappedPos && isPointInsideBounds(snappedPos, selectedRoomBounds)) {
-            const roomCenter = selectedRoomBounds
-              ? new THREE.Vector3(
-                  (selectedRoomBounds.minX + selectedRoomBounds.maxX) / 2,
-                  snappedPos.y,
-                  (selectedRoomBounds.minZ + selectedRoomBounds.maxZ) / 2,
-                )
-              : null;
-            updateGhostPreview(tool, snappedPos, roomCenter);
+            updateGhostPreview(tool, snappedPos, selectedRoomBounds, activeRoomHeightM);
           } else {
             clearGhostPreview();
           }
@@ -1660,41 +2033,45 @@ const FloorPlan3D = () => {
         if (!selectedRoomBounds) {
           clearGhostPreview();
         } else {
-          const routeEffectiveSurface = (hoveredFace === 'floor' || hoveredFace === 'ceiling')
-            ? hoveredFace
-            : routePlacementMode;
-          const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
-          let routeBasePoint = null;
-          if (routeEffectiveSurface === 'ceiling') {
-            routeBasePoint = getIntersectionOnHeight(event, activeRoomHeightM - 0.05) ?? getGroundIntersection(event);
-          } else if (routeEffectiveSurface === 'floor') {
-            routeBasePoint = getGroundIntersection(event);
-          } else {
-            const wallHit = getPointerWallHit(event);
-            routeBasePoint = wallHit?.point ?? getIntersectionOnHeight(event, routeHeightM) ?? getGroundIntersection(event);
-          }
-
-          if (!routeBasePoint || !isPointInsideBounds(routeBasePoint, selectedRoomBounds)) {
+          const mode = routePlacementMode;
+          const lastForGhost = routeNodesRef.current.length
+            ? routeNodesRef.current[routeNodesRef.current.length - 1]
+            : null;
+          const picked = pickRouteSurfaceAlongRay(event, mode, {
+            lastSurfaceKind: lastForGhost?.surfaceKind ?? null,
+            hoverFace: getRoutePointerHoverFace(event),
+          });
+          if (!picked || !isPointInsideBounds(picked.point, selectedRoomBounds)) {
             clearGhostPreview();
           } else {
-            let snapped = snapPointToSurface(routeBasePoint, getRouteModeHeight(), routeEffectiveSurface);
+            const routeBasePoint = picked.point.clone();
+            const snappedPointResult = snapRouteEquipmentForPreview(event, routeBasePoint);
+            let snapped = null;
+            if (snappedPointResult.pointId) {
+              snapped = snappedPointResult.point.clone();
+            } else {
+              snapped = routeBasePoint;
+            }
             if (!snapped || !isPointInsideBounds(snapped, selectedRoomBounds)) {
               clearGhostPreview();
             } else {
-              const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
-              snapped = snappedPointResult.point;
-              if (routeEffectiveSurface === 'wall' && routePointsRef.current.length > 0 && !event.shiftKey) {
-                const prev = routePointsRef.current[routePointsRef.current.length - 1];
-                snapped = new THREE.Vector3(snapped.x, prev.y, snapped.z);
-              }
-              const forceVertical = event.shiftKey;
-              snapped = makeOrthogonalPoint(snapped, forceVertical);
-
               clearGhostPreview();
               const g = ghostGroupRef.current;
               if (g && routePointsRef.current.length > 0) {
                 const prev = routePointsRef.current[routePointsRef.current.length - 1];
-                const geom = new THREE.BufferGeometry().setFromPoints([prev, snapped]);
+                const ghostChain = expandSurfaceRouteSegment(
+                  prev,
+                  snapped,
+                  selectedRoomBounds,
+                  activeRoomHeightM,
+                  WALL_INSET_M,
+                  {
+                    placementMode: routePlacementMode,
+                    fromSurfaceKind: lastForGhost?.surfaceKind,
+                    toSurfaceKind: picked.kind,
+                  },
+                );
+                const geom = new THREE.BufferGeometry().setFromPoints(ghostChain);
                 const mat = new THREE.LineDashedMaterial({
                   color: 0xfacc15,
                   dashSize: 0.12,
@@ -1735,16 +2112,44 @@ const FloorPlan3D = () => {
     if (idx < 0 || idx >= routeNodesRef.current.length) return;
 
     const currentNode = routeNodesRef.current[idx];
-    const hit = getIntersectionOnHeight(event, currentNode.z);
-    if (!hit) return;
-    if (selectedRoomBounds && !isPointInsideBounds(hit, selectedRoomBounds)) return;
+    const dragMode =
+      routePlacementMode === 'wall' || routePlacementMode === 'floor' || routePlacementMode === 'ceiling'
+        ? routePlacementMode
+        : (currentNode.surfaceKind && currentNode.surfaceKind !== 'auto'
+          ? currentNode.surfaceKind
+          : 'auto');
+    const prevInChain = idx > 0 ? routeNodesRef.current[idx - 1] : null;
+    const picked = pickRouteSurfaceAlongRay(event, dragMode, {
+      lastSurfaceKind: prevInChain?.surfaceKind ?? currentNode.surfaceKind ?? null,
+      hoverFace: getRoutePointerHoverFace(event),
+    });
+    if (!picked) return;
 
-    let snapped = surfaceMode === 'wall'
-      ? getWallSnapPointFromBounds(new THREE.Vector3(hit.x, currentNode.z, hit.z), selectedRoomBounds, currentNode.z)
-      : new THREE.Vector3(hit.x, currentNode.z, hit.z);
+    const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
+    const rawProbe = new THREE.Vector3(picked.point.x, picked.point.y, picked.point.z);
+    const raySnap = snapRouteNodeFromElectricalRay(event);
+    let snappedPointResult = raySnap?.pointId ? raySnap : findNearestExistingPoint(rawProbe, selectedRoomPoints);
+    let snapped;
+    let surfaceKind = picked.kind;
+    if (snappedPointResult.pointId) {
+      snapped = snappedPointResult.point.clone();
+      surfaceKind = inferRouteSurfaceKindFromHeightM(snapped.y, activeRoomHeightM);
+    } else {
+      snapped = picked.point;
+      if (!snappedPointResult.pointId && picked.kind === 'wall') {
+        const wallHitSnap = getPointerWallHit(event);
+        if (wallHitSnap?.point) {
+          const whProbe = new THREE.Vector3(wallHitSnap.point.x, routeHeightM, wallHitSnap.point.z);
+          const whRes = findNearestExistingPoint(whProbe, selectedRoomPoints);
+          if (whRes.pointId) snappedPointResult = whRes;
+        }
+      }
+      if (snappedPointResult.pointId) {
+        snapped = snappedPointResult.point.clone();
+        surfaceKind = inferRouteSurfaceKindFromHeightM(snapped.y, activeRoomHeightM);
+      }
+    }
     if (selectedRoomBounds && !isPointInsideBounds(snapped, selectedRoomBounds)) return;
-    const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
-    snapped = snappedPointResult.point;
 
     const nextNodes = routeNodesRef.current.map((node, i) =>
       i === idx
@@ -1755,6 +2160,7 @@ const FloorPlan3D = () => {
           z: snapped.y,
           pointId: snappedPointResult.pointId || null,
           symbolType: snappedPointResult.symbolType || null,
+          surfaceKind,
         }
         : node
     );
@@ -1892,10 +2298,10 @@ const FloorPlan3D = () => {
       // ТКП 339: щиток (точка старта) — стандартная высота 120–180 см, по умолчанию 150 см
       setPointHeight((prev) => (prev >= 120 && prev <= 180 ? prev : 150));
     } else if (tool === 'add-outlet') {
-      setPointHeight((prev) => (prev >= 20 && prev <= 60 ? prev : 30));
+      setPointHeight((prev) => (prev > 0 ? prev : 30));
     } else if (tool === 'add-light') {
-      // Lights always go on ceiling — snap to ceiling height via surfaceMode/hover,
-      // but set a default high value so the sphere renders near the ceiling
+      setSurfaceMode('ceiling');
+      // Светильник только на потолке — высота в панели для превью/контекста около уровня потолка
       setPointHeight((prev) => (prev >= 200 ? prev : 250));
     }
     const placementTools = ['add-outlet', 'add-switch', 'add-light', 'add-source', 'add-door', 'add-window', 'draw-route'];
@@ -1904,21 +2310,17 @@ const FloorPlan3D = () => {
     }
   }, [clearGhostPreview, tool]);
 
-  // When the route placement mode changes, auto-adjust route height to valid range
   useEffect(() => {
     if (routePlacementMode === 'ceiling') {
       setRouteHeight((prev) => Math.max(prev, 240));
     } else if (routePlacementMode === 'floor') {
       setRouteHeight((prev) => Math.min(prev, 20));
+    } else if (routePlacementMode === 'auto') {
+      setRouteHeight((prev) => (prev >= 10 && prev <= 260 ? prev : 120));
     } else {
       setRouteHeight((prev) => (prev >= 10 && prev <= 230 ? prev : 120));
     }
   }, [routePlacementMode]);
-
-  // Sync routePlacementMode with surfaceMode so they stay consistent
-  useEffect(() => {
-    setRoutePlacementMode(surfaceMode);
-  }, [surfaceMode]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -1960,10 +2362,10 @@ const FloorPlan3D = () => {
       return;
     }
     const hints = {
-      'draw-route': 'Кликайте на сцене для добавления узлов трассы. Shift+клик — вертикальный переход. Enter — сохранить.',
+      'draw-route': 'Кликайте по стене, полу или потолку — узлы только на поверхностях (режим «Авто»). Enter — сохранить черновик.',
       'add-outlet': 'Наведите курсор на стену, пол или потолок и кликните ЛКМ для добавления розетки.',
       'add-switch': 'Наведите курсор на стену и кликните ЛКМ для добавления выключателя.',
-      'add-light': 'Наведите курсор на потолок или стену и кликните ЛКМ для добавления световой точки.',
+      'add-light': 'Наведите курсор на потолок комнаты и кликните ЛКМ для добавления светильника.',
       'add-source': 'Наведите курсор на стену и кликните ЛКМ для размещения щитка (стартовой точки).',
       'add-door': 'Наведите курсор на стену (она подсветится) и кликните ЛКМ для добавления двери.',
       'add-window': 'Наведите курсор на стену (она подсветится) и кликните ЛКМ для добавления окна.',
@@ -2049,11 +2451,6 @@ const FloorPlan3D = () => {
     return name.includes('ван') || name.includes('душ') || name.includes('сануз') || name.includes('саун');
   }, [getRoomName]);
 
-  const isChildrenRoom = useCallback((roomId) => {
-    const name = getRoomName(roomId);
-    return name.includes('дет') || name.includes('игров') || name.includes('nursery');
-  }, [getRoomName]);
-
   const isKitchenRoom = useCallback((roomId) => {
     const name = getRoomName(roomId);
     return name.includes('кух') || name.includes('kitchen');
@@ -2098,8 +2495,8 @@ const FloorPlan3D = () => {
       }
     }
 
-    if (tool === 'add-switch' && (pointHeight < 80 || pointHeight > 170)) {
-      stage2Errors.push('Высота выключателя должна быть в диапазоне 0.8-1.7 м от пола (ТКП 8.5.9).');
+    if (tool === 'add-switch') {
+      stage3Warnings.push('Выключатель (ТКП 8.5.9): высоту задайте кликом по стене в диапазоне 0.8–1.7 м (поле «Высота точки» не задаёт высоту на стене).');
     }
 
     // ТКП 339: точка старта (щиток) — стандартная высота 120–180 см
@@ -2117,18 +2514,13 @@ const FloorPlan3D = () => {
       }
     }
 
-    // ТКП: в детской комнате розетки должны быть на высоте 1.8 м
-    if (tool === 'add-outlet' && isChildrenRoom(selectedRoomId) && pointHeight !== 180) {
-      stage2Errors.push('ТКП 7.1.48: в детских комнатах розетки устанавливаются на высоте 1.8 м (180 см).');
-    }
-
     return {
       stage1Errors,
       stage2Errors,
       stage3Warnings,
       isValid: stage1Errors.length === 0 && stage2Errors.length === 0,
     };
-  }, [isChildrenRoom, isWetRoom, pointHeight, sceneData.points, selectedCircuit, selectedRoom, selectedRoomId, tool]);
+  }, [isWetRoom, pointHeight, sceneData.points, selectedCircuit, selectedRoom, selectedRoomId, tool]);
 
   const autoPlaceSelectedRoom = useCallback(async (forcedWidthCm = null, forcedLengthCm = null) => {
     if (!selectedRoom || !sceneData.floorPlan) {

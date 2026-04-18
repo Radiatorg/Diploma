@@ -263,7 +263,12 @@ export default function FloorPlan3DSidebar({
             <button className={tool === 'add-switch' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-switch')}>
               Выключатель
             </button>
-            <button className={tool === 'add-light' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-light')}>
+            <button
+              type="button"
+              className={tool === 'add-light' ? 'tool-btn active' : 'tool-btn'}
+              onClick={() => setTool('add-light')}
+              title="Только на потолок"
+            >
               Лампа
             </button>
             <button className={tool === 'draw-route' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('draw-route')}>
@@ -288,14 +293,30 @@ export default function FloorPlan3DSidebar({
               Наведите на точку или трассу и нажмите ЛКМ или клавишу Delete для удаления.
             </div>
           )}
+          {tool === 'add-light' && (
+            <div className="floor-plan-3d-tip">
+              Светильник размещается только на потолке; режим «Потолок» включается автоматически.
+            </div>
+          )}
           <div className="editor-field">
             <label htmlFor="surfaceMode">Рабочая поверхность</label>
-            <select id="surfaceMode" value={surfaceMode} onChange={(e) => setSurfaceMode(e.target.value)}>
+            <select
+              id="surfaceMode"
+              value={surfaceMode}
+              onChange={(e) => setSurfaceMode(e.target.value)}
+              disabled={tool === 'add-light'}
+            >
+              <option value="any">Все поверхности</option>
               <option value="wall">Стены</option>
               <option value="floor">Пол</option>
               <option value="ceiling">Потолок</option>
             </select>
           </div>
+          {surfaceMode === 'any' && (
+            <div className="floor-plan-3d-tip">
+              Клик и превью по ближайшей грани луча (стена, пол или потолок). Для фиксации одной грани выберите «Стены», «Пол» или «Потолок».
+            </div>
+          )}
           {surfaceMode === 'wall' && (
             <div className="editor-field">
               <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
@@ -380,9 +401,10 @@ export default function FloorPlan3DSidebar({
               value={routePlacementMode}
               onChange={(e) => setRoutePlacementMode(e.target.value)}
             >
-              <option value="wall">По стене</option>
-              <option value="ceiling">По потолку</option>
-              <option value="floor">По полу</option>
+              <option value="auto">Авто: пол, стены, потолок (по лучу)</option>
+              <option value="wall">Только стена</option>
+              <option value="ceiling">Только потолок</option>
+              <option value="floor">Только пол</option>
             </select>
           </div>
           <div className="editor-field">
@@ -401,7 +423,7 @@ export default function FloorPlan3DSidebar({
             </select>
           </div>
           <div className="floor-plan-3d-tip">
-            <strong>Логика разводки:</strong> 1) поставьте «Точку старта» на стене/потолке, 2) проложите трассы от неё — клик рядом со старт-точкой прицепит маршрут к ней, 3) завершите трассу у розетки или другой точки. После сохранения черновик очищается — начинайте следующую трассу сразу.
+            <strong>Логика разводки:</strong> 1) разместите «Точку старта» (щит) на стене, 2) проложите маршрут: клик около символа на плане привязывает узел к электрической точке, 3) первый и последний узел — у приборов по ТКП. Промежуточные узлы при необходимости тоже можно привязать к потребителям (не более одной электрической точки на узел). После сохранения черновик сбрасывается — следующая трасса с нуля.
           </div>
 
           <div className="route-actions">
@@ -563,7 +585,7 @@ export default function FloorPlan3DSidebar({
             Если выбрана цепь, конечные точки трассы автоматически привязываются к ней (если у точек еще нет цепи).
           </div>
           <div className="floor-plan-3d-tip">
-            Для вертикального сегмента удерживайте Shift при клике. Для плотной прокладки рядом используйте смещение линии.
+            Сегменты трассы могут идти по прямой в пространстве (в т.ч. с переходом потолок–стена–прибор). Для плотной прокладки у стены используйте смещение параллельной линии.
           </div>
           <div className="floor-plan-3d-tip">
             Горячие клавиши: 1-розетка, 2-выключатель, 3-свет, 4-трасса, W-стены, F-пол, C-потолок.
