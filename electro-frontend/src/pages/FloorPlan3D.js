@@ -136,14 +136,37 @@ function buildSourceGroup() {
   return group;
 }
 
+function isSourcePointByNotes(point) {
+  const notes = (point?.notes || '').toLowerCase();
+  return notes.includes('стартов') || notes.includes('start');
+}
+
 function buildPointGroup(point) {
   const type = point?.electricalSymbol?.type || '';
-  const notes = (point?.notes || '').toLowerCase();
-  const isSource = notes.includes('стартов') || notes.includes('start');
+  const isSource = isSourcePointByNotes(point);
   if (type === 'outlet') return buildOutletGroup(0x10b981);
   if (type === 'switch') return buildSwitchGroup(0x60a5fa);
   if (type === 'light' && !isSource) return buildLightGroup(0xffc857);
   return buildSourceGroup();
+}
+
+function buildGhostGroup(toolType) {
+  let group;
+  if (toolType === 'add-outlet') group = buildOutletGroup(0x34d399);
+  else if (toolType === 'add-switch') group = buildSwitchGroup(0x93c5fd);
+  else if (toolType === 'add-light') group = buildLightGroup(0xfde68a);
+  else group = buildSourceGroup();
+  group.traverse((child) => {
+    if (child.isMesh && child.material) {
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach((mat) => {
+        mat.transparent = true;
+        mat.opacity = 0.48;
+        mat.depthWrite = false;
+      });
+    }
+  });
+  return group;
 }
 
 function buildDoorGroup(oWidthM, oHeightM, wallThickness) {
@@ -265,6 +288,7 @@ const FloorPlan3D = () => {
   const routeNodesRef = useRef([]);
   const metaGroupRef = useRef(null);
   const wallsGroupRef = useRef(null);
+  const ghostGroupRef = useRef(null);
   const pointsGroupRef = useRef(null);
   const routesGroupRef = useRef(null);
   const dragStateRef = useRef({ active: false, nodeIndex: -1 });
@@ -274,7 +298,6 @@ const FloorPlan3D = () => {
   const historyRef = useRef({ undo: [], redo: [], applying: false });
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [sceneData, setSceneData] = useState({
     floorPlan: null,
     rooms: [],
@@ -396,6 +419,14 @@ const FloorPlan3D = () => {
     return 'Стена';
   }, []);
 
+  const getWallFaceRotationY = useCallback((face) => {
+    if (face === 'north') return 0;
+    if (face === 'south') return Math.PI;
+    if (face === 'east') return -Math.PI / 2;
+    if (face === 'west') return Math.PI / 2;
+    return 0;
+  }, []);
+
   const getPointTypeLabel = useCallback((symbolType) => {
     if (symbolType === 'outlet') return 'Розетка';
     if (symbolType === 'switch') return 'Выключатель';
@@ -423,6 +454,34 @@ const FloorPlan3D = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const clearGhostPreview = useCallback(() => {
+    const g = ghostGroupRef.current;
+    if (!g) return;
+    while (g.children.length) {
+      const child = g.children[0];
+      child.traverse((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          mats.forEach((m) => m.dispose());
+        }
+      });
+      g.remove(child);
+    }
+  }, []);
+
+  const updateGhostPreview = useCallback((toolType, position, roomCenter) => {
+    clearGhostPreview();
+    const g = ghostGroupRef.current;
+    if (!g || !position) return;
+    const ghost = buildGhostGroup(toolType);
+    ghost.position.copy(position);
+    if (roomCenter) {
+      ghost.rotation.y = Math.atan2(roomCenter.x - position.x, roomCenter.z - position.z);
+    }
+    g.add(ghost);
+  }, [clearGhostPreview]);
+
   const getRouteModeWarning = useCallback(() => {
     if (routePlacementMode === 'ceiling' && routeHeight < 240) {
       return 'ТКП: для потолочной прокладки задайте высоту не ниже 240 см.';
@@ -441,6 +500,15 @@ const FloorPlan3D = () => {
     if (routePlacementMode === 'floor') return Math.min(routeHeight, 20);
     return routeHeight;
   }, [routeHeight, routePlacementMode]);
+
+  const prevRouteModeWarningRef = useRef('');
+  useEffect(() => {
+    const warning = getRouteModeWarning();
+    if (warning && warning !== prevRouteModeWarningRef.current) {
+      addToast(warning, 'warn');
+    }
+    prevRouteModeWarningRef.current = warning;
+  }, [getRouteModeWarning, addToast]);
 
   const getPointColor = (point) => {
     const symbolType = point?.electricalSymbol?.type || '';
@@ -772,7 +840,6 @@ const FloorPlan3D = () => {
   const loadSceneData = useCallback(async () => {
     try {
       setLoading(true);
-      setError('');
       const floorPlanRes = await floorPlanAPI.get(projectId).catch(async (e) => {
         if (e?.response?.status === 404) {
           return floorPlanAPI.createOrUpdate(projectId, { width: 1000, height: 800, scale: 1.0 });
@@ -798,7 +865,7 @@ const FloorPlan3D = () => {
         savedSpecificationAPI.getAll(projectId).catch(() => ({ data: [] })),
       ]);
       if (routeLoadError) {
-        setError(routeLoadError);
+        addToast(routeLoadError, 'error');
       }
 
       const nextSceneData = {
@@ -824,11 +891,11 @@ const FloorPlan3D = () => {
         setSelectedCircuitId(String(loadedCircuits[0].id));
       }
     } catch (e) {
-      setError('Не удалось загрузить данные 3D-редактора');
+      addToast('Не удалось загрузить данные 3D-редактора', 'error');
     } finally {
       setLoading(false);
     }
-  }, [projectId, selectedCircuitId, selectedRoomId]);
+  }, [projectId, selectedCircuitId, selectedRoomId, addToast]);
 
   useEffect(() => {
     loadSceneData();
@@ -867,14 +934,17 @@ const FloorPlan3D = () => {
     const pointsGroup = new THREE.Group();
     const routesGroup = new THREE.Group();
     const metaGroup = new THREE.Group();
+    const ghostGroup = new THREE.Group();
     wallsGroupRef.current = wallsGroup;
     pointsGroupRef.current = pointsGroup;
     routesGroupRef.current = routesGroup;
     metaGroupRef.current = metaGroup;
+    ghostGroupRef.current = ghostGroup;
     scene.add(wallsGroup);
     scene.add(pointsGroup);
     scene.add(routesGroup);
     scene.add(metaGroup);
+    scene.add(ghostGroup);
 
     const animate = () => {
       controls.update();
@@ -1337,6 +1407,20 @@ const FloorPlan3D = () => {
       if (start.symbolType === 'switch' && end.symbolType === 'switch') {
         messages.push('Трасса не может начинаться и заканчиваться на выключателях.');
       }
+
+      // ТКП 339: трасса должна начинаться от точки старта (щитка), если она есть в комнате
+      const roomSources = selectedRoomId
+        ? sceneData.points.filter((p) => p.roomId === selectedRoomId && isSourcePointByNotes(p))
+        : [];
+      if (roomSources.length > 0) {
+        const startPoint = sceneData.points.find((p) => p.id === start.pointId);
+        const endPoint = sceneData.points.find((p) => p.id === end.pointId);
+        const startIsSource = startPoint ? isSourcePointByNotes(startPoint) : false;
+        const endIsSource = endPoint ? isSourcePointByNotes(endPoint) : false;
+        if (!startIsSource && !endIsSource) {
+          messages.push('ТКП 339: в помещении есть точка старта (щиток) — трасса должна начинаться или заканчиваться на ней.');
+        }
+      }
       if (start.pointId && end.pointId && !selectedCircuitId) {
         const startPoint = sceneData.points.find((p) => p.id === start.pointId);
         const endPoint = sceneData.points.find((p) => p.id === end.pointId);
@@ -1409,7 +1493,6 @@ const FloorPlan3D = () => {
       if (dx * dx + dy * dy > 36) return;
     }
     if (loading) return;
-    setError('');
 
     if (tool === 'delete') {
       await deleteHoveredObject();
@@ -1550,14 +1633,59 @@ const FloorPlan3D = () => {
     }
 
     if (tool === 'add-source' || tool === 'add-outlet' || tool === 'add-switch' || tool === 'add-light') {
-      if (tool === 'add-switch' && (pointHeight < 80 || pointHeight > 170)) {
-        addToast(`ТКП 8.5.9: выключатель — высота 0.8–1.7 м. Сейчас: ${pointHeight} см. Измените «Высота точки».`, 'warn');
-        return;
-      }
-      if (tool === 'add-outlet' && isWetRoom(selectedRoomId)) {
-        if (!selectedCircuit || !selectedCircuit.rcdRatingMa || Number(selectedCircuit.rcdRatingMa) > 30) {
-          addToast('ТКП 8.5.6/8.7.4: розетка в мокрой зоне — выберите цепь с УЗО ≤ 30 мА.', 'warn');
+      // ТКП: точка старта (щиток) должна размещаться на стене, не на полу и не на потолке
+      if (tool === 'add-source') {
+        if (effectiveSurface === 'floor') {
+          addToast('ТКП 339: точка старта (щиток) должна быть на стене, а не на полу. Переключитесь в режим стены (W).', 'error');
           return;
+        }
+        if (effectiveSurface === 'ceiling') {
+          addToast('ТКП 339: точка старта (щиток) должна быть на стене, а не на потолке. Переключитесь в режим стены (W).', 'error');
+          return;
+        }
+        // ТКП: в помещении допускается только одна точка старта (один щиток/ввод)
+        const existingSources = getRoomSourcePoints(selectedRoomId);
+        if (existingSources.length > 0) {
+          addToast('ТКП 339: в помещении уже есть точка старта (щиток). Допускается только один ввод на группу.', 'error');
+          return;
+        }
+      }
+
+      if (tool === 'add-switch') {
+        if (pointHeight < 80 || pointHeight > 170) {
+          addToast(`ТКП 8.5.9: выключатель — высота 0.8–1.7 м. Сейчас: ${pointHeight} см. Измените «Высота точки».`, 'warn');
+          return;
+        }
+        // ТКП 8.5.9 / 8.7.4: выключатели запрещены в мокрых зонах (зоны 0, 1, 2 — ванная, душевая, сауна)
+        if (isWetRoom(selectedRoomId)) {
+          addToast('ТКП 8.5.9: установка выключателей запрещена в ванных, душевых и саунах (зоны 0–2).', 'error');
+          return;
+        }
+      }
+
+      if (tool === 'add-outlet') {
+        if (isWetRoom(selectedRoomId)) {
+          if (!selectedCircuit || !selectedCircuit.rcdRatingMa || Number(selectedCircuit.rcdRatingMa) > 30) {
+            addToast('ТКП 8.5.6/8.7.4: розетка в мокрой зоне — выберите цепь с УЗО ≤ 30 мА.', 'warn');
+            return;
+          }
+        }
+        // ТКП: в детских комнатах розетки устанавливаются на высоте 1.8 м от пола
+        if (isChildrenRoom(selectedRoomId) && pointHeight !== 180) {
+          addToast(`ТКП 7.1.48: в детских комнатах розетки должны быть на высоте 1.8 м (180 см). Высота скорректирована.`, 'warn');
+          setPointHeight(180);
+          return;
+        }
+      }
+
+      if (tool === 'add-light') {
+        // ТКП 8.7.4: в мокрых помещениях (зона 2) — только светильники класса защиты 2
+        if (isWetRoom(selectedRoomId)) {
+          addToast('ТКП 8.7.4: в мокрых помещениях допускаются только светильники класса защиты IP44 / класса II.', 'warn');
+        }
+        // ТКП: над плитами и рабочими столами на кухне — защитное стекло
+        if (isKitchenRoom(selectedRoomId)) {
+          addToast('ТКП: на кухне над рабочими поверхностями и плитой светильники должны иметь защитное стекло.', 'warn');
         }
       }
       const symbolType = tool === 'add-outlet'
@@ -1601,12 +1729,14 @@ const FloorPlan3D = () => {
           });
         }
         await loadSceneData();
+        const pointLabel = getPointTypeLabel(symbolType);
+        addToast(`${pointLabel} добавлена`, 'success');
         if (tool === 'add-source') {
           // Keep source and route heights aligned by default (TKP-friendly wall wiring flow).
           setRouteHeight(Number(payload.heightFromFloor));
         }
       } catch (e) {
-        setError('Не удалось добавить электрическую точку');
+        addToast('Не удалось добавить электрическую точку', 'error');
       }
       return;
     }
@@ -1928,6 +2058,167 @@ const FloorPlan3D = () => {
           setCursorContext(null);
         }
       }
+
+      // Ghost preview for placement tools + openings + route segment
+      const pointPlacementTools = ['add-outlet', 'add-switch', 'add-light', 'add-source'];
+      const openingTools = ['add-door', 'add-window'];
+      if (pointPlacementTools.includes(tool) && !objectContext) {
+        const ghostSurface = (hoveredFace === 'floor' || hoveredFace === 'ceiling') ? hoveredFace : surfaceMode;
+        const snapBase = contextPoint ?? (hoveredFace === 'floor' ? getGroundIntersection(event) : null);
+        if (snapBase) {
+          const snappedPos = snapPointToSurface(snapBase, pointHeight, ghostSurface);
+          if (snappedPos && isPointInsideBounds(snappedPos, selectedRoomBounds)) {
+            const roomCenter = selectedRoomBounds
+              ? new THREE.Vector3(
+                  (selectedRoomBounds.minX + selectedRoomBounds.maxX) / 2,
+                  snappedPos.y,
+                  (selectedRoomBounds.minZ + selectedRoomBounds.maxZ) / 2,
+                )
+              : null;
+            updateGhostPreview(tool, snappedPos, roomCenter);
+          } else {
+            clearGhostPreview();
+          }
+        } else {
+          clearGhostPreview();
+        }
+      } else if (openingTools.includes(tool) && !objectContext) {
+        const wallHit = getPointerWallHit(event);
+        const clickFace = wallHit?.wallFace;
+        if (wallHit?.point && clickFace && ['north', 'south', 'east', 'west'].includes(clickFace) && selectedRoomBounds) {
+          const snapped = getWallSnapPointFromBounds(wallHit.point, selectedRoomBounds, tool === 'add-door' ? 1.0 : 1.5);
+          if (snapped && isPointInsideBounds(snapped, selectedRoomBounds)) {
+            clearGhostPreview();
+            const g = ghostGroupRef.current;
+            if (g) {
+              const matchingWall = findWallForFace(clickFace, selectedRoomBounds);
+              const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
+              const widthM = toMeters(widthCm);
+              const depthM = toMeters(matchingWall?.thickness || 20);
+              const heightM = tool === 'add-door' ? 2.0 : 1.2;
+              let previewX = snapped.x;
+              let previewZ = snapped.z;
+              let previewRotY = getWallFaceRotationY(clickFace);
+              if (matchingWall) {
+                const wallSX = Number(matchingWall.startX);
+                const wallSY = Number(matchingWall.startY);
+                const wallEX = Number(matchingWall.endX);
+                const wallEY = Number(matchingWall.endY);
+                const startX = toMeters(wallSX);
+                const startZ = toMeters(wallSY);
+                const endX = toMeters(wallEX);
+                const endZ = toMeters(wallEY);
+                const dx = endX - startX;
+                const dz = endZ - startZ;
+                const wallLenM = Math.max(Math.sqrt(dx * dx + dz * dz), 0.05);
+                const wallDirX = dx / wallLenM;
+                const wallDirZ = dz / wallLenM;
+                const isHorizontalWall = Math.abs(wallEX - wallSX) >= Math.abs(wallEY - wallSY);
+                const wallStartRef = isHorizontalWall ? Math.min(wallSX, wallEX) : Math.min(wallSY, wallEY);
+                const positionCm = isHorizontalWall
+                  ? toCentimeters(snapped.x) - wallStartRef
+                  : toCentimeters(snapped.z) - wallStartRef;
+                const posM = toMeters(Math.max(0, positionCm));
+                previewX = startX + wallDirX * (posM + widthM / 2);
+                previewZ = startZ + wallDirZ * (posM + widthM / 2);
+                previewRotY = -Math.atan2(dz, dx);
+              }
+              const yCenter = tool === 'add-door'
+                ? heightM / 2
+                : Math.max(2.8 - heightM / 2 - 0.3, heightM / 2);
+              const openingGroup = tool === 'add-door'
+                ? buildDoorGroup(widthM, heightM, depthM)
+                : buildWindowGroup(widthM, heightM, depthM);
+              openingGroup.position.set(previewX, yCenter, previewZ);
+              openingGroup.rotation.y = previewRotY;
+              openingGroup.traverse((child) => {
+                if (child.isMesh && child.material) {
+                  const mats = Array.isArray(child.material) ? child.material : [child.material];
+                  mats.forEach((mat) => {
+                    mat.transparent = true;
+                    mat.opacity = 0.48;
+                    mat.depthWrite = false;
+                  });
+                }
+              });
+              g.add(openingGroup);
+            }
+          } else {
+            clearGhostPreview();
+          }
+        } else {
+          clearGhostPreview();
+        }
+      } else if (tool === 'draw-route' && !objectContext) {
+        if (!selectedRoomBounds) {
+          clearGhostPreview();
+        } else {
+          const routeEffectiveSurface = (hoveredFace === 'floor' || hoveredFace === 'ceiling')
+            ? hoveredFace
+            : routePlacementMode;
+          const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
+          let routeBasePoint = null;
+          if (routeEffectiveSurface === 'ceiling') {
+            routeBasePoint = getIntersectionOnHeight(event, activeRoomHeightM - 0.05) ?? getGroundIntersection(event);
+          } else if (routeEffectiveSurface === 'floor') {
+            routeBasePoint = getGroundIntersection(event);
+          } else {
+            const wallHit = getPointerWallHit(event);
+            routeBasePoint = wallHit?.point ?? getIntersectionOnHeight(event, routeHeightM) ?? getGroundIntersection(event);
+          }
+
+          if (!routeBasePoint || !isPointInsideBounds(routeBasePoint, selectedRoomBounds)) {
+            clearGhostPreview();
+          } else {
+            let snapped = snapPointToSurface(routeBasePoint, getRouteModeHeight(), routeEffectiveSurface);
+            if (!snapped || !isPointInsideBounds(snapped, selectedRoomBounds)) {
+              clearGhostPreview();
+            } else {
+              const snappedPointResult = findNearestExistingPoint(snapped, selectedRoomPoints);
+              snapped = snappedPointResult.point;
+              if (routeEffectiveSurface === 'wall' && routePointsRef.current.length > 0 && !event.shiftKey) {
+                const prev = routePointsRef.current[routePointsRef.current.length - 1];
+                snapped = new THREE.Vector3(snapped.x, prev.y, snapped.z);
+              }
+              const forceVertical = event.shiftKey;
+              snapped = makeOrthogonalPoint(snapped, forceVertical);
+
+              clearGhostPreview();
+              const g = ghostGroupRef.current;
+              if (g && routePointsRef.current.length > 0) {
+                const prev = routePointsRef.current[routePointsRef.current.length - 1];
+                const geom = new THREE.BufferGeometry().setFromPoints([prev, snapped]);
+                const mat = new THREE.LineDashedMaterial({
+                  color: 0xfacc15,
+                  dashSize: 0.12,
+                  gapSize: 0.08,
+                  transparent: true,
+                  opacity: 0.9,
+                  depthWrite: false,
+                });
+                const line = new THREE.Line(geom, mat);
+                line.computeLineDistances();
+                g.add(line);
+                const sphere = new THREE.Mesh(
+                  new THREE.SphereGeometry(0.035, 10, 10),
+                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, depthWrite: false })
+                );
+                sphere.position.copy(snapped);
+                g.add(sphere);
+              } else if (g) {
+                const sphere = new THREE.Mesh(
+                  new THREE.SphereGeometry(0.04, 12, 12),
+                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.75, depthWrite: false })
+                );
+                sphere.position.copy(snapped);
+                g.add(sphere);
+              }
+            }
+          }
+        }
+      } else if (![...pointPlacementTools, ...openingTools, 'draw-route'].includes(tool)) {
+        clearGhostPreview();
+      }
     } else if (!objectContext) {
       setCursorContext(null);
     }
@@ -2090,14 +2381,21 @@ const FloorPlan3D = () => {
   useEffect(() => {
     if (tool === 'add-switch') {
       setPointHeight((prev) => (prev >= 80 && prev <= 170 ? prev : 100));
-    } else if (tool === 'add-outlet' || tool === 'add-source') {
+    } else if (tool === 'add-source') {
+      // ТКП 339: щиток (точка старта) — стандартная высота 120–180 см, по умолчанию 150 см
+      setPointHeight((prev) => (prev >= 120 && prev <= 180 ? prev : 150));
+    } else if (tool === 'add-outlet') {
       setPointHeight((prev) => (prev >= 20 && prev <= 60 ? prev : 30));
     } else if (tool === 'add-light') {
       // Lights always go on ceiling — snap to ceiling height via surfaceMode/hover,
       // but set a default high value so the sphere renders near the ceiling
       setPointHeight((prev) => (prev >= 200 ? prev : 250));
     }
-  }, [tool]);
+    const placementTools = ['add-outlet', 'add-switch', 'add-light', 'add-source', 'add-door', 'add-window', 'draw-route'];
+    if (!placementTools.includes(tool)) {
+      clearGhostPreview();
+    }
+  }, [clearGhostPreview, tool]);
 
   // When the route placement mode changes, auto-adjust route height to valid range
   useEffect(() => {
@@ -2148,15 +2446,36 @@ const FloorPlan3D = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [moveCameraByKeyboard]);
 
+  const toolHintShownRef = useRef(false);
+  useEffect(() => {
+    if (!toolHintShownRef.current) {
+      toolHintShownRef.current = true;
+      return;
+    }
+    const hints = {
+      'draw-route': 'Кликайте на сцене для добавления узлов трассы. Shift+клик — вертикальный переход. Enter — сохранить.',
+      'add-outlet': 'Наведите курсор на стену, пол или потолок и кликните ЛКМ для добавления розетки.',
+      'add-switch': 'Наведите курсор на стену и кликните ЛКМ для добавления выключателя.',
+      'add-light': 'Наведите курсор на потолок или стену и кликните ЛКМ для добавления световой точки.',
+      'add-source': 'Наведите курсор на стену и кликните ЛКМ для размещения щитка (стартовой точки).',
+      'add-door': 'Наведите курсор на стену (она подсветится) и кликните ЛКМ для добавления двери.',
+      'add-window': 'Наведите курсор на стену (она подсветится) и кликните ЛКМ для добавления окна.',
+      'delete': 'Наведите на объект для выделения, затем нажмите ЛКМ или Delete для удаления.',
+      'navigate': 'Режим навигации: ЛКМ+перетаскивание — вращение, колёсико — зум, ПКМ — панорамирование.',
+    };
+    const hint = hints[tool];
+    if (hint) addToast(hint, 'info');
+  }, [tool, addToast]);
+
   const saveCurrent3DCalculation = async () => {
     try {
       const name = saveCalcName.trim() || `3D расчет ${new Date().toLocaleString('ru-RU')}`;
       await savedSpecificationAPI.save(projectId, { name, projectId: Number(projectId) });
       setSaveCalcName('');
       await loadSceneData();
-      setError('');
+      addToast('Расчет сохранён', 'success');
     } catch (e) {
-      setError(e?.response?.data?.message || 'Не удалось сохранить текущий 3D расчет');
+      addToast(e?.response?.data?.message || 'Не удалось сохранить текущий 3D расчет', 'error');
     }
   };
 
@@ -2165,9 +2484,9 @@ const FloorPlan3D = () => {
       const response = await savedSpecificationAPI.getById(projectId, savedId, true);
       setSelectedSavedCalcId(savedId);
       setSelectedSavedCalcDetails(response.data || null);
-      setError('');
+      addToast('Расчет загружен', 'success');
     } catch (e) {
-      setError('Не удалось открыть сохраненный 3D расчет');
+      addToast('Не удалось открыть сохраненный 3D расчет', 'error');
     }
   };
 
@@ -2222,6 +2541,20 @@ const FloorPlan3D = () => {
     const name = getRoomName(roomId);
     return name.includes('ван') || name.includes('душ') || name.includes('сануз') || name.includes('саун');
   }, [getRoomName]);
+
+  const isChildrenRoom = useCallback((roomId) => {
+    const name = getRoomName(roomId);
+    return name.includes('дет') || name.includes('игров') || name.includes('nursery');
+  }, [getRoomName]);
+
+  const isKitchenRoom = useCallback((roomId) => {
+    const name = getRoomName(roomId);
+    return name.includes('кух') || name.includes('kitchen');
+  }, [getRoomName]);
+
+  const getRoomSourcePoints = useCallback((roomId) => (
+    sceneData.points.filter((p) => p.roomId === roomId && isSourcePointByNotes(p))
+  ), [sceneData.points]);
   const selectedCircuit = useMemo(
     () => circuits.find((circuit) => String(circuit.id) === String(selectedCircuitId)) || null,
     [circuits, selectedCircuitId]
@@ -2252,10 +2585,36 @@ const FloorPlan3D = () => {
         stage2Errors.push('Для мокрых помещений требуется цепь с УЗО не более 30 мА (ТКП 8.5.6, 8.7.4).');
       }
       stage3Warnings.push('Для розеток в мокрых помещениях требуется зона 3 и расстояние не менее 0.6 м от душа (ТКП 8.5.6).');
+      if (tool === 'add-switch') {
+        stage2Errors.push('Установка выключателей запрещена в мокрых помещениях — зоны 0, 1, 2 (ТКП 8.5.9).');
+      }
+      if (tool === 'add-light') {
+        stage3Warnings.push('В мокрых помещениях допускаются только светильники класса защиты II / IP44 и выше (ТКП 8.7.4).');
+      }
     }
 
     if (tool === 'add-switch' && (pointHeight < 80 || pointHeight > 170)) {
       stage2Errors.push('Высота выключателя должна быть в диапазоне 0.8-1.7 м от пола (ТКП 8.5.9).');
+    }
+
+    // ТКП 339: точка старта (щиток) — стандартная высота 120–180 см
+    if (tool === 'add-source' && (pointHeight < 120 || pointHeight > 180)) {
+      stage3Warnings.push(`Рекомендуемая высота щитка (точки старта) — 120–180 см. Текущая: ${pointHeight} см (ТКП 339).`);
+    }
+
+    // ТКП 339: в комнате должна быть хотя бы одна точка старта для прокладки трасс
+    if (selectedRoom && tool === 'draw-route') {
+      const roomSources = sceneData.points.filter(
+        (p) => p.roomId === selectedRoomId && ((p?.notes || '').toLowerCase().includes('стартов') || (p?.notes || '').toLowerCase().includes('start'))
+      );
+      if (roomSources.length === 0) {
+        stage3Warnings.push('ТКП 339: перед прокладкой трасс разместите точку старта (щиток) в помещении.');
+      }
+    }
+
+    // ТКП: в детской комнате розетки должны быть на высоте 1.8 м
+    if (tool === 'add-outlet' && isChildrenRoom(selectedRoomId) && pointHeight !== 180) {
+      stage2Errors.push('ТКП 7.1.48: в детских комнатах розетки устанавливаются на высоте 1.8 м (180 см).');
     }
 
     return {
@@ -2264,7 +2623,7 @@ const FloorPlan3D = () => {
       stage3Warnings,
       isValid: stage1Errors.length === 0 && stage2Errors.length === 0,
     };
-  }, [isWetRoom, pointHeight, selectedCircuit, selectedRoom, selectedRoomId, tool]);
+  }, [isChildrenRoom, isWetRoom, pointHeight, sceneData.points, selectedCircuit, selectedRoom, selectedRoomId, tool]);
 
   const autoPlaceSelectedRoom = useCallback(async (forcedWidthCm = null, forcedLengthCm = null) => {
     if (!selectedRoom || !sceneData.floorPlan) {
@@ -2286,7 +2645,7 @@ const FloorPlan3D = () => {
         }
       }
       if (!widthCm || !heightCm) {
-        setError('Укажите ширину и длину комнаты в панели 3D-редактора или задайте площадь комнаты.');
+        addToast('Укажите ширину и длину комнаты в панели 3D-редактора или задайте площадь комнаты.', 'warn');
         return;
       }
       const floorWidth = Number(sceneData.floorPlan.width || 0);
@@ -2345,17 +2704,16 @@ const FloorPlan3D = () => {
         cameraRef.current.position.set(centerX, roomCeilingHeightM + 1.5, centerZ + 0.01);
         controlsRef.current.update();
       }
-      setError('');
+      addToast('Комната размещена на плане', 'success');
     } catch (e) {
-      setError('Не удалось автоматически разместить комнату на плане');
+      addToast('Не удалось автоматически разместить комнату на плане', 'error');
     }
-  }, [loadSceneData, projectId, roomCeilingHeightM, sceneData.floorPlan, selectedRoom, toMeters, roomLengthCm, roomWidthCm]);
+  }, [addToast, loadSceneData, projectId, roomCeilingHeightM, sceneData.floorPlan, selectedRoom, toMeters, roomLengthCm, roomWidthCm]);
 
   const saveSelectedRoomGeometry = useCallback(async () => {
     if (!selectedRoom || !sceneData.floorPlan) return;
     try {
       setSavingRoomGeometry(true);
-      setError('');
       const areaM2 = Number(selectedRoom.area || 0);
       let widthCm = Number(roomWidthCm || 0);
       let lengthCm = Number(roomLengthCm || 0);
@@ -2373,7 +2731,7 @@ const FloorPlan3D = () => {
       }
 
       if (!widthCm || !lengthCm || widthCm < 50 || lengthCm < 50) {
-        setError('Ширина и длина комнаты должны быть заданы и быть не меньше 0.5 м.');
+        addToast('Ширина и длина комнаты должны быть заданы и быть не меньше 0.5 м.', 'warn');
         return;
       }
 
@@ -2386,13 +2744,12 @@ const FloorPlan3D = () => {
       setRoomWidthCm(normalizedWidthCm);
       setRoomLengthCm(normalizedLengthCm);
       await autoPlaceSelectedRoom(normalizedWidthCm, normalizedLengthCm);
-      setError('');
     } catch (e) {
-      setError(e?.response?.data?.message || 'Не удалось сохранить геометрию комнаты');
+      addToast(e?.response?.data?.message || 'Не удалось сохранить геометрию комнаты', 'error');
     } finally {
       setSavingRoomGeometry(false);
     }
-  }, [autoPlaceSelectedRoom, lastEditedRoomSide, projectId, roomLengthCm, roomWidthCm, sceneData.floorPlan, selectedRoom]);
+  }, [addToast, autoPlaceSelectedRoom, lastEditedRoomSide, projectId, roomLengthCm, roomWidthCm, sceneData.floorPlan, selectedRoom]);
 
   useEffect(() => {
     if (selectedRoom && !selectedRoomHasGeometry) {
@@ -2425,6 +2782,7 @@ const FloorPlan3D = () => {
     setCursorPanel((prev) => ({ ...prev, visible: false }));
     setHoveredWallFace(null);
     setCursorContext(null);
+    clearGhostPreview();
   };
 
   const clearRouteDraft = () => {
@@ -2500,14 +2858,14 @@ const FloorPlan3D = () => {
         historyRef.current.redo.shift();
       }
       setHistoryVersion((v) => v + 1);
-      setError('');
       await loadSceneData();
+      addToast('Действие отменено', 'info');
     } catch (e) {
-      setError(action.undoError || 'Не удалось отменить действие');
+      addToast(action.undoError || 'Не удалось отменить действие', 'error');
     } finally {
       historyRef.current.applying = false;
     }
-  }, [MAX_HISTORY_SIZE, loadSceneData]);
+  }, [MAX_HISTORY_SIZE, addToast, loadSceneData]);
 
   const redoLastAction = useCallback(async () => {
     if (historyRef.current.applying || historyRef.current.redo.length === 0) return;
@@ -2521,14 +2879,14 @@ const FloorPlan3D = () => {
         historyRef.current.undo.shift();
       }
       setHistoryVersion((v) => v + 1);
-      setError('');
       await loadSceneData();
+      addToast('Действие повторено', 'info');
     } catch (e) {
-      setError(action.redoError || 'Не удалось повторить действие');
+      addToast(action.redoError || 'Не удалось повторить действие', 'error');
     } finally {
       historyRef.current.applying = false;
     }
-  }, [MAX_HISTORY_SIZE, loadSceneData]);
+  }, [MAX_HISTORY_SIZE, addToast, loadSceneData]);
 
   const deleteHoveredObject = useCallback(async () => {
     const hovered = hoveredObjectRef.current;
@@ -2560,7 +2918,7 @@ const FloorPlan3D = () => {
         addToast('Электрическая точка удалена', 'info');
         await loadSceneData();
       } catch (e) {
-        setError('Не удалось удалить электрическую точку');
+        addToast('Не удалось удалить электрическую точку', 'error');
       }
     } else if (hovered.type === 'route') {
       const routeData = hovered.data;
@@ -2584,7 +2942,7 @@ const FloorPlan3D = () => {
         addToast('Трасса кабеля удалена', 'info');
         await loadSceneData();
       } catch (e) {
-        setError('Не удалось удалить трассу');
+        addToast('Не удалось удалить трассу', 'error');
       }
     } else if (hovered.type === 'opening') {
       const { wallId, wallRaw, openingIndex } = hovered.data;
@@ -2645,7 +3003,7 @@ const FloorPlan3D = () => {
         addToast(`${label} удалено`, 'info');
         await loadSceneData();
       } catch (e) {
-        setError('Не удалось удалить проём');
+        addToast('Не удалось удалить проём', 'error');
       }
     }
   }, [addToast, loadSceneData, projectId, pushHistoryAction]);
@@ -2723,11 +3081,9 @@ const FloorPlan3D = () => {
       await loadSceneData();
       clearRouteDraft();
       setNewRouteName('');
-      setError('');
       addToast('Трасса сохранена. Можно прокладывать следующую — просто кликайте на сцене.', 'success');
     } catch (e) {
       const msg = e?.response?.data?.message || 'Не удалось сохранить трассу кабеля';
-      setError(msg);
       addToast(msg, 'error');
     }
   };
@@ -2752,14 +3108,14 @@ const FloorPlan3D = () => {
       redrawRouteDraft();
       validateRouteDraft();
     } catch (e) {
-      setError('Не удалось загрузить трассу для редактирования');
+      addToast('Не удалось загрузить трассу для редактирования', 'error');
     }
   };
 
   const overwriteSelectedRoute = async () => {
     if (!selectedRouteId) return;
     if (validateRouteDraft().length > 0) {
-      setError('Черновик трассы не прошел валидацию.');
+      addToast('Черновик трассы не прошел валидацию.', 'warn');
       return;
     }
     try {
@@ -2796,13 +3152,11 @@ const FloorPlan3D = () => {
           redoError: 'Не удалось повторить обновление трассы',
         });
       }
-      setError('');
       await loadSceneData();
       clearRouteDraft();
       addToast('Трасса обновлена. Черновик очищен — можно прокладывать следующую.', 'success');
     } catch (e) {
       const msg = e?.response?.data?.message || 'Не удалось обновить трассу кабеля';
-      setError(msg);
       addToast(msg, 'error');
     }
   };
@@ -2836,9 +3190,9 @@ const FloorPlan3D = () => {
       }
       clearRouteDraft();
       await loadSceneData();
-      setError('');
+      addToast('Трасса удалена', 'info');
     } catch (e) {
-      setError('Не удалось удалить трассу');
+      addToast('Не удалось удалить трассу', 'error');
     }
   };
 
@@ -3393,7 +3747,6 @@ const FloorPlan3D = () => {
                   ))}
                 </ul>
               </div>
-              {error && <div className="floor-plan-3d-tip floor-plan-3d-error">{error}</div>}
             </>
           )}
         </aside>
@@ -3556,6 +3909,24 @@ const FloorPlan3D = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toasts.length > 0 && (
+        <div className="toast-container">
+          {toasts.map((t) => (
+            <div key={t.id} className={`toast toast-${t.type || 'warn'}`}>
+              <span className="toast-message">{t.message}</span>
+              <button
+                type="button"
+                className="toast-dismiss"
+                onClick={() => dismissToast(t.id)}
+                aria-label="Закрыть"
+              >
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

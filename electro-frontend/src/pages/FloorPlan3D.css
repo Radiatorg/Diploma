@@ -443,14 +443,14 @@
 /* ───── Toast notifications ───── */
 
 .toast-container {
-  position: absolute;
-  top: 60px;
-  right: 14px;
-  z-index: 300;
+  position: fixed;
+  top: 72px;
+  right: 18px;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 400px;
+  max-width: 420px;
   pointer-events: none;
 }
 
@@ -496,6 +496,12 @@
   background: rgba(10, 36, 80, 0.97);
   border-color: #3b82f6;
   color: #dbeafe;
+}
+
+.toast-success {
+  background: rgba(5, 50, 30, 0.97);
+  border-color: #22c55e;
+  color: #dcfce7;
 }
 
 .toast-message {
