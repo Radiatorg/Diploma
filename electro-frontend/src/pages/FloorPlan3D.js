@@ -33,6 +33,9 @@ import { expandSurfaceRouteSegment } from './floorPlan3D/surfaceRoutePolyline';
 import { orientElectricalPointGroup } from './floorPlan3D/electricalPointOrientation';
 import './FloorPlan3D.css';
 
+/** Вертикальные грани комнаты (оверлеи для луча) — не пол/потолок */
+const WALL_CARDINAL_FACES = ['north', 'south', 'east', 'west'];
+
 const FloorPlan3D = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -214,7 +217,14 @@ const FloorPlan3D = () => {
     if (!g || !position) return;
     const ghost = buildGhostGroup(toolType);
     if (bounds && roomHeightM != null) {
-      orientElectricalPointGroup(ghost, position.x, position.y, position.z, bounds, roomHeightM, WALL_INSET_M);
+      const ghostSymbolType =
+        toolType === 'add-outlet' ? 'outlet'
+          : toolType === 'add-switch' ? 'switch'
+            : toolType === 'add-light' ? 'light'
+              : null;
+      orientElectricalPointGroup(ghost, position.x, position.y, position.z, bounds, roomHeightM, WALL_INSET_M, {
+        symbolType: ghostSymbolType,
+      });
     } else {
       ghost.position.copy(position);
     }
@@ -232,24 +242,45 @@ const FloorPlan3D = () => {
     routeHitMeshesRef.current = [];
     openingHoverMeshesRef.current = [];
 
+    const selectedRoomForScene = selectedRoomId
+      ? sceneData.rooms.find((r) => r.id === selectedRoomId)
+      : null;
+    const isolatedBounds =
+      insideRoomView && selectedRoomForScene
+        ? getRoomBounds(selectedRoomForScene, sceneData.walls)
+        : null;
+    const isolateRoomView = Boolean(insideRoomView && isolatedBounds);
+
     const floorWidthM = toMeters(sceneData.floorPlan.width);
     const floorHeightM = toMeters(sceneData.floorPlan.height);
     const floorY = 0;
 
-    const floorGeometry = new THREE.PlaneGeometry(floorWidthM, floorHeightM, 20, 20);
     const floorMaterial = new THREE.MeshStandardMaterial({
       color: 0x1b2333,
       roughness: 0.95,
       metalness: 0.05,
       side: THREE.DoubleSide,
     });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(floorWidthM / 2, floorY, floorHeightM / 2);
-    floor.receiveShadow = true;
-    wallsGroupRef.current.add(floor);
+    if (isolateRoomView) {
+      const fw = Math.max(isolatedBounds.maxX - isolatedBounds.minX, 0.2);
+      const fh = Math.max(isolatedBounds.maxZ - isolatedBounds.minZ, 0.2);
+      const floorGeometry = new THREE.PlaneGeometry(fw, fh, 12, 12);
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set(isolatedBounds.minX + fw / 2, floorY, isolatedBounds.minZ + fh / 2);
+      floor.receiveShadow = true;
+      wallsGroupRef.current.add(floor);
+    } else {
+      const floorGeometry = new THREE.PlaneGeometry(floorWidthM, floorHeightM, 20, 20);
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set(floorWidthM / 2, floorY, floorHeightM / 2);
+      floor.receiveShadow = true;
+      wallsGroupRef.current.add(floor);
+    }
 
     sceneData.rooms.forEach((room) => {
+      if (isolateRoomView && room.id !== selectedRoomId) return;
       const bounds = getRoomBounds(room, sceneData.walls);
       if (!bounds) return;
       const roomHeightM = roomHeightById[room.id] || (room.id === selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M);
@@ -350,6 +381,10 @@ const FloorPlan3D = () => {
     });
 
     sceneData.walls.forEach((wall) => {
+      const isExternal = wall.wallType === 'external';
+      if (isolateRoomView && !isExternal && wall.roomId && String(wall.roomId) !== String(selectedRoomId)) {
+        return;
+      }
       const startX = toMeters(wall.startX);
       const startZ = toMeters(wall.startY);
       const endX = toMeters(wall.endX);
@@ -361,7 +396,6 @@ const FloorPlan3D = () => {
       const wallHeight = 2.8;
 
       const geometry = new THREE.BoxGeometry(length, wallHeight, thickness);
-      const isExternal = wall.wallType === 'external';
       const hasOpenings = wall.openings && wall.openings.length > 0;
       const baseOpacity = !selectedRoomId || wall.roomId === selectedRoomId || isExternal ? 0.96 : 0.42;
       const material = new THREE.MeshStandardMaterial({
@@ -431,7 +465,7 @@ const FloorPlan3D = () => {
         ? (roomHeightById[pRoom.id] || (pRoom.id === selectedRoomId ? roomCeilingHeightM : ROOM_HEIGHT_M))
         : ROOM_HEIGHT_M;
       if (pBounds) {
-        orientElectricalPointGroup(group, x, y, z, pBounds, roomHForPoint, WALL_INSET_M);
+        orientElectricalPointGroup(group, x, y, z, pBounds, roomHForPoint, WALL_INSET_M, { point });
       } else {
         group.position.set(x, y, z);
       }
@@ -454,6 +488,20 @@ const FloorPlan3D = () => {
       try {
         const path = JSON.parse(route.pathJson);
         if (!Array.isArray(path) || path.length < 2) return;
+        if (isolateRoomView && isolatedBounds) {
+          const pad = 0.12;
+          const pathInsideRoom = path.every((node) => {
+            const px = toMeters(node.x);
+            const pz = toMeters(node.y);
+            return (
+              px >= isolatedBounds.minX - pad
+              && px <= isolatedBounds.maxX + pad
+              && pz >= isolatedBounds.minZ - pad
+              && pz <= isolatedBounds.maxZ + pad
+            );
+          });
+          if (!pathInsideRoom) return;
+        }
         const points3D = path.map((node) => new THREE.Vector3(toMeters(node.x), toMeters(node.z || 0), toMeters(node.y)));
         const lineGeo = new THREE.BufferGeometry().setFromPoints(points3D);
         const lineMat = new THREE.LineBasicMaterial({
@@ -526,7 +574,7 @@ const FloorPlan3D = () => {
         // ignore malformed route json
       }
     });
-  }, [ROOM_HEIGHT_M, WALL_INSET_M, getRoomBounds, hoveredWallFace, roomCeilingHeightM, roomHeightById, sceneData, selectedRoomId, surfaceMode, wallFaceMode]);
+  }, [ROOM_HEIGHT_M, WALL_INSET_M, getRoomBounds, hoveredWallFace, insideRoomView, roomCeilingHeightM, roomHeightById, sceneData, selectedRoomId, surfaceMode, wallFaceMode]);
 
   const loadSceneData = useCallback(async () => {
     try {
@@ -741,7 +789,8 @@ const FloorPlan3D = () => {
     return intersects[0]?.object?.userData?.wallFace || null;
   }, []);
 
-  const getPointerWallHit = useCallback((event) => {
+  const getPointerWallHit = useCallback((event, options = {}) => {
+    const { wallsOnly = false } = options;
     if (!rendererRef.current || !cameraRef.current || wallHoverMeshesRef.current.length === 0) return null;
     const rect = rendererRef.current.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -752,9 +801,13 @@ const FloorPlan3D = () => {
     raycaster.setFromCamera(mouse, cameraRef.current);
     const intersects = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
     if (!intersects.length) return null;
+    const hit = wallsOnly
+      ? intersects.find((h) => WALL_CARDINAL_FACES.includes(h.object?.userData?.wallFace))
+      : intersects[0];
+    if (!hit) return null;
     return {
-      point: intersects[0].point,
-      wallFace: intersects[0]?.object?.userData?.wallFace || null,
+      point: hit.point,
+      wallFace: hit.object?.userData?.wallFace || null,
     };
   }, []);
 
@@ -769,8 +822,7 @@ const FloorPlan3D = () => {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, cameraRef.current);
     const intersects = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
-    const wallFaces = ['north', 'south', 'east', 'west'];
-    const hit = intersects.find((h) => wallFaces.includes(h.object?.userData?.wallFace));
+    const hit = intersects.find((h) => WALL_CARDINAL_FACES.includes(h.object?.userData?.wallFace));
     if (!hit) return null;
     return {
       point: hit.point,
@@ -800,7 +852,7 @@ const FloorPlan3D = () => {
     );
   }, []);
 
-  const getWallSnapPointFromBounds = useCallback((point, bounds, heightM) => {
+  const getWallSnapPointFromBounds = useCallback((point, bounds, heightM, snapFaceOverride = null) => {
     if (!point || !bounds) return point;
     const y = Math.min(Math.max(heightM, 0.05), activeRoomHeightM - 0.02);
     const laneOffset = toMeters(parallelOffsetCm);
@@ -815,6 +867,10 @@ const FloorPlan3D = () => {
       west: new THREE.Vector3(bounds.minX + WALL_INSET_M, y, clampZ(clampedZ + laneOffset)),
       east: new THREE.Vector3(bounds.maxX - WALL_INSET_M, y, clampZ(clampedZ + laneOffset)),
     };
+
+    if (snapFaceOverride && WALL_CARDINAL_FACES.includes(snapFaceOverride)) {
+      return candidates[snapFaceOverride];
+    }
 
     if (wallFaceMode !== 'auto') {
       return candidates[wallFaceMode] || candidates.north;
@@ -1142,6 +1198,7 @@ const FloorPlan3D = () => {
               new THREE.Vector3(p.x, 0, p.z),
               selectedRoomBounds,
               yClamped,
+              faceTag,
             );
             candidates.push({ kind: 'wall', dist: h.distance, point: wallSnapped });
           }
@@ -1301,15 +1358,20 @@ const FloorPlan3D = () => {
     if (tool === 'add-door' || tool === 'add-window') {
       if (!ensureRoomEditingAllowed()) return;
 
-      const wallHit = getPointerWallHit(event);
+      const wallHit = getPointerWallHit(event, { wallsOnly: true });
       const clickFace = wallHit?.wallFace;
-      if (!clickFace || !['north', 'south', 'east', 'west'].includes(clickFace)) {
+      if (!clickFace || !WALL_CARDINAL_FACES.includes(clickFace)) {
         addToast('Наведите курсор на стену (она подсветится) и нажмите ЛКМ.', 'warn');
         return;
       }
 
       const hitPoint = wallHit.point;
-      const snapped = getWallSnapPointFromBounds(hitPoint, selectedRoomBounds, tool === 'add-door' ? 1.0 : 1.5);
+      const snapped = getWallSnapPointFromBounds(
+        hitPoint,
+        selectedRoomBounds,
+        tool === 'add-door' ? 1.0 : 1.5,
+        clickFace,
+      );
 
       const openingType = tool === 'add-door' ? 'door' : 'window';
       const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
@@ -1845,7 +1907,10 @@ const FloorPlan3D = () => {
       if (!dragStateRef.current.active) return;
     }
 
-    const hoveredFace = getPointerWallFace(event);
+    const openingPlacementTools = ['add-door', 'add-window'];
+    const hoveredFace = openingPlacementTools.includes(tool)
+      ? (getPointerWallHit(event, { wallsOnly: true })?.wallFace ?? null)
+      : getPointerWallFace(event);
     if (hoveredFace !== hoveredWallFace) {
       setHoveredWallFace(hoveredFace);
     }
@@ -1963,10 +2028,15 @@ const FloorPlan3D = () => {
           clearGhostPreview();
         }
       } else if (openingTools.includes(tool) && !objectContext) {
-        const wallHit = getPointerWallHit(event);
+        const wallHit = getPointerWallHit(event, { wallsOnly: true });
         const clickFace = wallHit?.wallFace;
-        if (wallHit?.point && clickFace && ['north', 'south', 'east', 'west'].includes(clickFace) && selectedRoomBounds) {
-          const snapped = getWallSnapPointFromBounds(wallHit.point, selectedRoomBounds, tool === 'add-door' ? 1.0 : 1.5);
+        if (wallHit?.point && clickFace && WALL_CARDINAL_FACES.includes(clickFace) && selectedRoomBounds) {
+          const snapped = getWallSnapPointFromBounds(
+            wallHit.point,
+            selectedRoomBounds,
+            tool === 'add-door' ? 1.0 : 1.5,
+            clickFace,
+          );
           if (snapped && isPointInsideBounds(snapped, selectedRoomBounds)) {
             clearGhostPreview();
             const g = ghostGroupRef.current;
