@@ -4,13 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.verchuk.electro.dto.request.RoomRequest;
 import com.verchuk.electro.dto.response.RoomResponse;
 import com.verchuk.electro.dto.response.WallResponse;
+import com.verchuk.electro.exception.BadRequestException;
 import com.verchuk.electro.exception.ResourceNotFoundException;
 import com.verchuk.electro.model.Project;
 import com.verchuk.electro.model.Room;
 import com.verchuk.electro.model.RoomType;
+import com.verchuk.electro.model.Wall;
+import com.verchuk.electro.repository.ElectricalPointRepository;
 import com.verchuk.electro.repository.ProjectRepository;
 import com.verchuk.electro.repository.RoomRepository;
 import com.verchuk.electro.repository.RoomTypeRepository;
+import com.verchuk.electro.repository.WallRepository;
 import com.verchuk.electro.service.WallService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -54,6 +58,12 @@ public class RoomService {
 
     @Autowired
     private WallService wallService;
+
+    @Autowired
+    private WallRepository wallRepository;
+
+    @Autowired
+    private ElectricalPointRepository electricalPointRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -146,6 +156,39 @@ public class RoomService {
             RoomType roomType = roomTypeRepository.findById(request.getRoomTypeId())
                     .orElseThrow(() -> new ResourceNotFoundException("RoomType", "id", request.getRoomTypeId()));
             room.setRoomType(roomType);
+        }
+
+        // Validate that new limits are not less than existing placed counts
+        if (request.getMaxSwitches() != null || request.getMaxDoors() != null
+                || request.getMaxWindows() != null || request.getMaxLights() != null) {
+            long switchCount = electricalPointRepository.countByRoomAndSymbolType(room, "switch");
+            long lightCount = electricalPointRepository.countByRoomAndSymbolType(room, "light");
+            List<Wall> roomWalls = wallRepository.findByRoomId(room.getId());
+            long doorCount = roomWalls.stream()
+                    .flatMap(w -> w.getOpenings() != null ? w.getOpenings().stream() : java.util.stream.Stream.empty())
+                    .filter(o -> "door".equals(o.getOpeningType()))
+                    .count();
+            long windowCount2 = roomWalls.stream()
+                    .flatMap(w -> w.getOpenings() != null ? w.getOpenings().stream() : java.util.stream.Stream.empty())
+                    .filter(o -> "window".equals(o.getOpeningType()))
+                    .count();
+
+            if (request.getMaxSwitches() != null && request.getMaxSwitches() < switchCount) {
+                throw new BadRequestException(
+                    "Нельзя установить лимит выключателей (" + request.getMaxSwitches() + ") меньше текущего количества (" + switchCount + " шт.)");
+            }
+            if (request.getMaxDoors() != null && request.getMaxDoors() < doorCount) {
+                throw new BadRequestException(
+                    "Нельзя установить лимит дверей (" + request.getMaxDoors() + ") меньше текущего количества (" + doorCount + " шт.)");
+            }
+            if (request.getMaxWindows() != null && request.getMaxWindows() < windowCount2) {
+                throw new BadRequestException(
+                    "Нельзя установить лимит окон (" + request.getMaxWindows() + ") меньше текущего количества (" + windowCount2 + " шт.)");
+            }
+            if (request.getMaxLights() != null && request.getMaxLights() < lightCount) {
+                throw new BadRequestException(
+                    "Нельзя установить лимит световых точек (" + request.getMaxLights() + ") меньше текущего количества (" + lightCount + " шт.)");
+            }
         }
 
         room.setMaxOutlets(request.getMaxOutlets());

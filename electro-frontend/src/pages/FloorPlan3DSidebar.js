@@ -27,6 +27,7 @@ export default function FloorPlan3DSidebar({
   openSaved3DCalculation,
   selectedSavedCalcDetails,
   projectId,
+  projectName,
   tool,
   setTool,
   surfaceMode,
@@ -37,8 +38,12 @@ export default function FloorPlan3DSidebar({
   setParallelOffsetCm,
   doorWidthCm,
   setDoorWidthCm,
+  doorHeightCm,
+  setDoorHeightCm,
   windowWidthCm,
   setWindowWidthCm,
+  windowHeightCm,
+  setWindowHeightCm,
   pointHeight,
   setPointHeight,
   newRouteName,
@@ -249,9 +254,29 @@ export default function FloorPlan3DSidebar({
               </div>
             )}
           </div>
+          <div className="existing-routes-list">
+            <h3>Существующие трассы</h3>
+            {sceneData.routes.length === 0 ? (
+              <div className="floor-plan-3d-tip">Трасс пока нет. Нарисуйте маршрут и нажмите «Сохранить и начать новую».</div>
+            ) : (
+              <ul>
+                {sceneData.routes.map((route) => (
+                  <li key={route.id}>
+                    <button
+                      type="button"
+                      className={selectedRouteId === route.id ? 'route-item-btn active' : 'route-item-btn'}
+                      onClick={() => loadRouteToDraft(route.id)}
+                    >
+                      #{route.id} {route.notes || 'Без названия'} ({Number(route.lengthM || 0).toFixed(2)} м)
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {selectedRoom && (
             <div className="floor-plan-3d-tip">
-              Геометрию и площадь комнаты изменяйте в настройках проекта: /projects/{projectId}/edit.
+              Геометрию и площадь комнаты изменяйте в настройках проекта «{projectName}».
             </div>
           )}
           <div className="tool-grid">
@@ -352,138 +377,192 @@ export default function FloorPlan3DSidebar({
               Светильник размещается только на потолке; режим «Потолок» включается автоматически.
             </div>
           )}
-          <div className="editor-field">
-            <label htmlFor="surfaceMode">Рабочая поверхность</label>
-            <select
-              id="surfaceMode"
-              value={surfaceMode}
-              onChange={(e) => setSurfaceMode(e.target.value)}
-              disabled={tool === 'add-light'}
-            >
-              <option value="any">Все поверхности</option>
-              <option value="wall">Стены</option>
-              <option value="floor">Пол</option>
-              <option value="ceiling">Потолок</option>
-            </select>
-          </div>
-          {surfaceMode === 'any' && (
-            <div className="floor-plan-3d-tip">
-              Клик и превью по ближайшей грани луча (стена, пол или потолок). Для фиксации одной грани выберите «Стены», «Пол» или «Потолок».
+
+          {/* Рабочая поверхность — для инструментов размещения точек и трассы */}
+          {['add-outlet', 'add-switch', 'add-light', 'add-source', 'draw-route'].includes(tool) && (
+            <>
+              <div className="editor-field">
+                <label htmlFor="surfaceMode">Рабочая поверхность</label>
+                <select
+                  id="surfaceMode"
+                  value={surfaceMode}
+                  onChange={(e) => setSurfaceMode(e.target.value)}
+                  disabled={tool === 'add-light'}
+                >
+                  <option value="any">Все поверхности</option>
+                  <option value="wall">Стены</option>
+                  <option value="floor">Пол</option>
+                  <option value="ceiling">Потолок</option>
+                </select>
+              </div>
+              {surfaceMode === 'any' && (
+                <div className="floor-plan-3d-tip">
+                  Клик и превью по ближайшей грани луча (стена, пол или потолок). Для фиксации одной грани выберите «Стены», «Пол» или «Потолок».
+                </div>
+              )}
+              {surfaceMode === 'wall' && (
+                <div className="editor-field">
+                  <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
+                  <select id="wallFaceMode" value={wallFaceMode} onChange={(e) => setWallFaceMode(e.target.value)}>
+                    <option value="auto">Авто (ближайшая)</option>
+                    <option value="north">Северная</option>
+                    <option value="south">Южная</option>
+                    <option value="west">Западная</option>
+                    <option value="east">Восточная</option>
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Высота точки — только для точечных объектов */}
+          {['add-outlet', 'add-switch', 'add-light', 'add-source'].includes(tool) && (
+            <div className="editor-field">
+              <label htmlFor="pointHeight">Высота точки, см</label>
+              <input
+                id="pointHeight"
+                type="number"
+                min="0"
+                max="400"
+                value={pointHeight}
+                onChange={(e) => setPointHeight(Number(e.target.value || 0))}
+              />
             </div>
           )}
-          {surfaceMode === 'wall' && (
+
+          {/* Электрическая цепь — для любых электрических точек и трасс */}
+          {['add-outlet', 'add-switch', 'add-light', 'add-source', 'draw-route'].includes(tool) && (
             <div className="editor-field">
-              <label htmlFor="wallFaceMode">Грань стены (изнутри комнаты)</label>
-              <select id="wallFaceMode" value={wallFaceMode} onChange={(e) => setWallFaceMode(e.target.value)}>
-                <option value="auto">Авто (ближайшая)</option>
-                <option value="north">Северная</option>
-                <option value="south">Южная</option>
-                <option value="west">Западная</option>
-                <option value="east">Восточная</option>
+              <label htmlFor="routeCircuit">Электрическая цепь</label>
+              <select
+                id="routeCircuit"
+                value={selectedCircuitId}
+                onChange={(e) => setSelectedCircuitId(e.target.value)}
+              >
+                <option value="">Без цепи</option>
+                {circuits.map((circuit) => (
+                  <option key={circuit.id} value={circuit.id}>
+                    {circuit.name} ({circuit.breakerRatingA || '?'}A)
+                  </option>
+                ))}
               </select>
             </div>
           )}
-          <div className="editor-field">
-            <label htmlFor="parallelOffsetCm">Смещение параллельной линии, см</label>
-            <input
-              id="parallelOffsetCm"
-              type="number"
-              min="-30"
-              max="30"
-              value={parallelOffsetCm}
-              onChange={(e) => setParallelOffsetCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="doorWidth">Ширина двери, см</label>
-            <input
-              id="doorWidth"
-              type="number"
-              min="50"
-              max="200"
-              value={doorWidthCm}
-              onChange={(e) => setDoorWidthCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="windowWidth">Ширина окна, см</label>
-            <input
-              id="windowWidth"
-              type="number"
-              min="50"
-              max="300"
-              value={windowWidthCm}
-              onChange={(e) => setWindowWidthCm(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="pointHeight">Высота точки, см</label>
-            <input
-              id="pointHeight"
-              type="number"
-              min="0"
-              max="400"
-              value={pointHeight}
-              onChange={(e) => setPointHeight(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeName">Название трассы</label>
-            <input
-              id="routeName"
-              type="text"
-              value={newRouteName}
-              onChange={(e) => setNewRouteName(e.target.value)}
-              placeholder="Например: Кухня-розетки-1"
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeHeight">Базовая высота трассы, см</label>
-            <input
-              id="routeHeight"
-              type="number"
-              min="0"
-              max="400"
-              value={routeHeight}
-              onChange={(e) => setRouteHeight(Number(e.target.value || 0))}
-            />
-          </div>
-          <div className="editor-field">
-            <label htmlFor="routeMode">Режим прокладки</label>
-            <select
-              id="routeMode"
-              value={routePlacementMode}
-              onChange={(e) => setRoutePlacementMode(e.target.value)}
-            >
-              <option value="auto">Авто: пол, стены, потолок (по лучу)</option>
-              <option value="wall">Только стена</option>
-              <option value="ceiling">Только потолок</option>
-              <option value="floor">Только пол</option>
-            </select>
-          </div>
-          {tool === 'draw-route' && (
-            <div className="floor-plan-3d-tip">
-              В режиме трассы «Рабочая поверхность» и «Режим прокладки» синхронизируются автоматически. Режим «Авто» позволяет переходы между стенами, полом и потолком. Другие режимы ограничивают трассу одной поверхностью.
-            </div>
+
+          {/* Ширина и высота двери — только при добавлении двери */}
+          {tool === 'add-door' && (
+            <>
+              <div className="editor-field">
+                <label htmlFor="doorWidth">Ширина двери, см</label>
+                <input
+                  id="doorWidth"
+                  type="number"
+                  min="50"
+                  max="200"
+                  value={doorWidthCm}
+                  onChange={(e) => setDoorWidthCm(Number(e.target.value || 0))}
+                />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="doorHeight">Высота двери, см</label>
+                <input
+                  id="doorHeight"
+                  type="number"
+                  min="180"
+                  max="220"
+                  value={doorHeightCm}
+                  onChange={(e) => setDoorHeightCm(Number(e.target.value || 0))}
+                />
+              </div>
+            </>
           )}
-          <div className="editor-field">
-            <label htmlFor="routeCircuit">Электрическая цепь</label>
-            <select
-              id="routeCircuit"
-              value={selectedCircuitId}
-              onChange={(e) => setSelectedCircuitId(e.target.value)}
-            >
-              <option value="">Без цепи</option>
-              {circuits.map((circuit) => (
-                <option key={circuit.id} value={circuit.id}>
-                  {circuit.name} ({circuit.breakerRatingA || '?'}A)
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="floor-plan-3d-tip">
-            <strong>Логика разводки:</strong> 1) разместите «Точку старта» (щит) на стене, 2) проложите маршрут: клик около символа на плане привязывает узел к электрической точке, 3) первый и последний узел — у приборов по ТКП. Промежуточные узлы при необходимости тоже можно привязать к потребителям (не более одной электрической точки на узел). После сохранения черновик сбрасывается — следующая трасса с нуля.
-          </div>
+
+          {/* Ширина и высота окна — только при добавлении окна */}
+          {tool === 'add-window' && (
+            <>
+              <div className="editor-field">
+                <label htmlFor="windowWidth">Ширина окна, см</label>
+                <input
+                  id="windowWidth"
+                  type="number"
+                  min="50"
+                  max="300"
+                  value={windowWidthCm}
+                  onChange={(e) => setWindowWidthCm(Number(e.target.value || 0))}
+                />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="windowHeight">Высота окна, см</label>
+                <input
+                  id="windowHeight"
+                  type="number"
+                  min="60"
+                  max="150"
+                  value={windowHeightCm}
+                  onChange={(e) => setWindowHeightCm(Number(e.target.value || 0))}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Параметры трассы — только в режиме прокладки трассы */}
+          {tool === 'draw-route' && (
+            <>
+              <div className="editor-field">
+                <label htmlFor="routeMode">Режим прокладки</label>
+                <select
+                  id="routeMode"
+                  value={routePlacementMode}
+                  onChange={(e) => setRoutePlacementMode(e.target.value)}
+                >
+                  <option value="auto">Авто: пол, стены, потолок (по лучу)</option>
+                  <option value="wall">Только стена</option>
+                  <option value="ceiling">Только потолок</option>
+                  <option value="floor">Только пол</option>
+                </select>
+              </div>
+              {routePlacementMode === 'wall' && (
+                <div className="editor-field">
+                  <label htmlFor="parallelOffsetCm">Смещение параллельной линии, см</label>
+                  <input
+                    id="parallelOffsetCm"
+                    type="number"
+                    min="-30"
+                    max="30"
+                    value={parallelOffsetCm}
+                    onChange={(e) => setParallelOffsetCm(Number(e.target.value || 0))}
+                  />
+                </div>
+              )}
+              <div className="editor-field">
+                <label htmlFor="routeHeight">Базовая высота трассы, см</label>
+                <input
+                  id="routeHeight"
+                  type="number"
+                  min="0"
+                  max="400"
+                  value={routeHeight}
+                  onChange={(e) => setRouteHeight(Number(e.target.value || 0))}
+                />
+              </div>
+              <div className="editor-field">
+                <label htmlFor="routeName">Название трассы</label>
+                <input
+                  id="routeName"
+                  type="text"
+                  value={newRouteName}
+                  onChange={(e) => setNewRouteName(e.target.value)}
+                  placeholder="Например: Кухня-розетки-1"
+                />
+              </div>
+              <div className="floor-plan-3d-tip">
+                «Рабочая поверхность» и «Режим прокладки» синхронизируются автоматически. Режим «Авто» — переходы между стенами, полом и потолком. Другие режимы — одна поверхность. Смещение работает только в режиме «Только стена».
+              </div>
+              <div className="floor-plan-3d-tip">
+                <strong>Логика разводки:</strong> 1) разместите «Точку старта» (щит) на стене, 2) проложите маршрут: клик около символа привязывает узел к электрической точке, 3) первый и последний узел — у приборов по ТКП. После сохранения черновик сбрасывается.
+              </div>
+            </>
+          )}
 
           <div className="route-actions">
             <button type="button" className="btn-primary" onClick={saveRoute} disabled={routePointCount < 2 || routeValidationMessages.length > 0} title="Сохранить текущий черновик в базу и очистить для новой трассы">
@@ -685,13 +764,7 @@ export default function FloorPlan3DSidebar({
             </div>
           )}
           <div className="floor-plan-3d-tip">
-            Если выбрана цепь, конечные точки трассы автоматически привязываются к ней (если у точек еще нет цепи).
-          </div>
-          <div className="floor-plan-3d-tip">
-            Сегменты трассы могут идти по прямой в пространстве (в т.ч. с переходом потолок–стена–прибор). Для плотной прокладки у стены используйте смещение параллельной линии.
-          </div>
-          <div className="floor-plan-3d-tip">
-            Горячие клавиши: 1-розетка, 2-выключатель, 3-свет, 4-трасса, W-стены, F-пол, C-потолок.
+            Горячие клавиши: <strong>1</strong>-розетка, <strong>2</strong>-выключатель, <strong>3</strong>-свет, <strong>4</strong>-трасса, <strong>5</strong>-дверь, <strong>6</strong>-окно, <strong>N</strong>-навигация, <strong>E</strong>-старт линии, <strong>D</strong>-удалить; поверхности: <strong>W</strong>-стены, <strong>F</strong>-пол, <strong>C</strong>-потолок.
           </div>
           <div className="route-actions">
             <button type="button" className="btn-secondary" onClick={undoLastAction} disabled={!canUndo}>
@@ -700,22 +773,6 @@ export default function FloorPlan3DSidebar({
             <button type="button" className="btn-secondary" onClick={redoLastAction} disabled={!canRedo}>
               Redo (Ctrl+Y)
             </button>
-          </div>
-          <div className="existing-routes-list">
-            <h3>Существующие трассы</h3>
-            <ul>
-              {sceneData.routes.map((route) => (
-                <li key={route.id}>
-                  <button
-                    type="button"
-                    className={selectedRouteId === route.id ? 'route-item-btn active' : 'route-item-btn'}
-                    onClick={() => loadRouteToDraft(route.id)}
-                  >
-                    #{route.id} {route.notes || 'Без названия'} ({Number(route.lengthM || 0).toFixed(2)} м)
-                  </button>
-                </li>
-              ))}
-            </ul>
           </div>
         </>
       )}

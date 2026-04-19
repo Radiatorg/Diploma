@@ -8,6 +8,7 @@ import {
   circuitAPI,
   electricalPointAPI,
   floorPlanAPI,
+  projectAPI,
   projectApplianceAPI,
   roomAPI,
   savedSpecificationAPI,
@@ -99,7 +100,10 @@ const FloorPlan3D = () => {
   const [lastEditedRoomSide, setLastEditedRoomSide] = useState('width');
   const [savingRoomGeometry, setSavingRoomGeometry] = useState(false);
   const [doorWidthCm, setDoorWidthCm] = useState(90);
+  const [doorHeightCm, setDoorHeightCm] = useState(200);
   const [windowWidthCm, setWindowWidthCm] = useState(120);
+  const [windowHeightCm, setWindowHeightCm] = useState(100);
+  const [projectName, setProjectName] = useState('');
   const [stats, setStats] = useState({
     rooms: 0,
     walls: 0,
@@ -639,7 +643,8 @@ const FloorPlan3D = () => {
       }
 
       let routeLoadError = null;
-      const [roomsRes, wallsRes, pointsRes, routesRes, circuitsRes, appliancesRes, reportRes, savedRes] = await Promise.all([
+      const [projectRes, roomsRes, wallsRes, pointsRes, routesRes, circuitsRes, appliancesRes, reportRes, savedRes] = await Promise.all([
+        projectAPI.getById(projectId).catch(() => ({ data: {} })),
         roomAPI.getByProject(projectId).catch(() => ({ data: [] })),
         wallAPI.getByProject(projectId).catch(() => ({ data: [] })),
         electricalPointAPI.getByProject(projectId).catch(() => ({ data: [] })),
@@ -654,6 +659,11 @@ const FloorPlan3D = () => {
       ]);
       if (routeLoadError) {
         addToast(routeLoadError, 'error');
+      }
+
+      // Установить название проекта
+      if (projectRes?.data?.name) {
+        setProjectName(projectRes.data.name);
       }
 
       const nextSceneData = {
@@ -1066,6 +1076,7 @@ const FloorPlan3D = () => {
     insertNodeAfter,
     removeNodeAt,
     removeLastNode,
+    rebuildRouteRefsFromNodes,
     saveRoute,
     loadRouteToDraft,
     overwriteSelectedRoute,
@@ -1499,7 +1510,7 @@ const FloorPlan3D = () => {
 
       const openingType = tool === 'add-door' ? 'door' : 'window';
       const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
-      const heightCm = tool === 'add-door' ? 200 : 120;
+      const heightCm = tool === 'add-door' ? doorHeightCm : windowHeightCm;
 
       // Limit check for doors/windows
       const roomLimData = sceneData.rooms.find((r) => r.id === selectedRoomId);
@@ -1568,7 +1579,13 @@ const FloorPlan3D = () => {
           height: Number(o.height || (o.openingType === 'door' ? 200 : 120)),
           openingType: o.openingType,
         }));
-        await wallAPI.update(projectId, matchingWall.id, {
+        const newOpeningPayload = {
+          position: Number(Math.max(0, positionCm).toFixed(2)),
+          width: widthCm,
+          height: heightCm,
+          openingType,
+        };
+        const wallBase = {
           startX: Number(matchingWall.startX),
           startY: Number(matchingWall.startY),
           endX: Number(matchingWall.endX),
@@ -1576,12 +1593,16 @@ const FloorPlan3D = () => {
           thickness: Number(matchingWall.thickness || 20),
           wallType: matchingWall.wallType || 'internal',
           roomId: matchingWall.roomId,
-          openings: [...existingOpenings, {
-            position: Number(Math.max(0, positionCm).toFixed(2)),
-            width: widthCm,
-            height: heightCm,
-            openingType,
-          }],
+        };
+        await wallAPI.update(projectId, matchingWall.id, {
+          ...wallBase,
+          openings: [...existingOpenings, newOpeningPayload],
+        });
+        pushHistoryAction({
+          undo: async () => wallAPI.update(projectId, matchingWall.id, { ...wallBase, openings: existingOpenings }),
+          redo: async () => wallAPI.update(projectId, matchingWall.id, { ...wallBase, openings: [...existingOpenings, newOpeningPayload] }),
+          undoError: `Не удалось отменить добавление ${openingType === 'door' ? 'двери' : 'окна'}`,
+          redoError: `Не удалось повторить добавление ${openingType === 'door' ? 'двери' : 'окна'}`,
         });
         addToast(`${openingType === 'door' ? 'Дверь' : 'Окно'} добавлено`, 'info');
         await loadSceneData();
@@ -1882,12 +1903,23 @@ const FloorPlan3D = () => {
         addToast('Узел трассы должен находиться в пределах выбранной комнаты.', 'warn');
         return;
       }
+      // Enforce: the first node of a route must be placed on a source point (distribution board)
+      if (routePointsRef.current.length === 0) {
+        const roomSourcePoints = sceneData.points.filter(
+          (p) => p.roomId === selectedRoomId && isSourcePointByNotes(p),
+        );
+        if (roomSourcePoints.length > 0 && (!snappedPointResult.pointId || !isSourcePointByNotes(sceneData.points.find((p) => p.id === snappedPointResult.pointId)))) {
+          addToast('Начало трассы должно быть на точке старта линии (символ щитка). Наведите курсор на щиток и кликните.', 'warn');
+          return;
+        }
+      }
       if (routePointsRef.current.length === 0 && snappedPointResult.pointId) {
         const snappedHeightCm = Number(toCentimeters(snapped.y).toFixed(0));
         if (Number.isFinite(snappedHeightCm)) {
           setRouteHeight(snappedHeightCm);
         }
       }
+      const prevNodesSnapshot = routeNodesRef.current.map((n) => ({ ...n }));
       if (routePointsRef.current.length === 0) {
         routePointsRef.current.push(new THREE.Vector3(snapped.x, snapped.y, snapped.z));
         routeNodesRef.current.push({
@@ -1925,6 +1957,15 @@ const FloorPlan3D = () => {
             surfaceKind: inferRouteSurfaceKindFromHeightM(pt.y, activeRoomHeightM),
           });
         }
+      }
+      const newNodesSnapshot = routeNodesRef.current.map((n) => ({ ...n }));
+      if (newNodesSnapshot.length > prevNodesSnapshot.length) {
+        pushHistoryAction({
+          undo: () => rebuildRouteRefsFromNodes(prevNodesSnapshot),
+          redo: () => rebuildRouteRefsFromNodes(newNodesSnapshot),
+          undoError: 'Не удалось отменить добавление узла трассы',
+          redoError: 'Не удалось повторить добавление узла трассы',
+        });
       }
       redrawRouteDraft();
       validateRouteDraft();
@@ -2293,7 +2334,8 @@ const FloorPlan3D = () => {
               const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
               const widthM = toMeters(widthCm);
               const depthM = toMeters(matchingWall?.thickness || 20);
-              const heightM = tool === 'add-door' ? 2.0 : 1.2;
+              const heightCm = tool === 'add-door' ? doorHeightCm : windowHeightCm;
+              const heightM = toMeters(heightCm);
               let previewX = snapped.x;
               let previewZ = snapped.z;
               let previewRotY = getWallFaceRotationY(clickFace);
@@ -2714,13 +2756,18 @@ const FloorPlan3D = () => {
       if (event.key === '2') setTool('add-switch');
       if (event.key === '3') setTool('add-light');
       if (event.key === '4') setTool('draw-route');
+      if (event.key === '5') setTool('add-door');
+      if (event.key === '6') setTool('add-window');
+      if (event.key.toLowerCase() === 'n') setTool('navigate');
+      if (event.key.toLowerCase() === 'e') setTool('add-source');
+      if (event.key.toLowerCase() === 'd') setTool('delete');
       if (event.key.toLowerCase() === 'f') setSurfaceMode('floor');
       if (event.key.toLowerCase() === 'w') setSurfaceMode('wall');
       if (event.key.toLowerCase() === 'c') setSurfaceMode('ceiling');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [moveCameraByKeyboard]);
+  }, [moveCameraByKeyboard, setTool, setSurfaceMode]);
 
   const toolHintShownRef = useRef(false);
   useEffect(() => {
@@ -2841,6 +2888,22 @@ const FloorPlan3D = () => {
   const saveRoomLimits = useCallback(async () => {
     if (!selectedRoomId || !selectedRoom) return;
     const limits = roomLimitsEdit[selectedRoomId] || {};
+
+    // Frontend-side validation using current room stats
+    const checks = [
+      { field: 'maxSwitches', count: roomExistingStats.switches, label: 'выключателей' },
+      { field: 'maxDoors', count: roomExistingStats.doors, label: 'дверей' },
+      { field: 'maxWindows', count: roomExistingStats.windows, label: 'окон' },
+      { field: 'maxLights', count: roomExistingStats.lights, label: 'световых точек' },
+    ];
+    for (const { field, count, label } of checks) {
+      const limit = limits[field];
+      if (limit != null && limit < count) {
+        addToast(`Нельзя установить лимит ${label} (${limit}) меньше текущего количества (${count} шт.)`, 'error');
+        return;
+      }
+    }
+
     setSavingRoomLimits(true);
     try {
       await roomAPI.update(projectId, selectedRoomId, {
@@ -2865,11 +2928,11 @@ const FloorPlan3D = () => {
       addToast('Лимиты комнаты сохранены', 'success');
       await loadSceneData();
     } catch (e) {
-      addToast('Не удалось сохранить лимиты комнаты', 'error');
+      addToast(e?.response?.data?.message || 'Не удалось сохранить лимиты комнаты', 'error');
     } finally {
       setSavingRoomLimits(false);
     }
-  }, [selectedRoomId, selectedRoom, roomLimitsEdit, projectId, addToast, loadSceneData]);
+  }, [selectedRoomId, selectedRoom, roomLimitsEdit, roomExistingStats, projectId, addToast, loadSceneData]);
 
   const roomPlan = roomLimitsEdit[selectedRoomId] || { maxSwitches: null, maxDoors: null, maxWindows: null, maxLights: null };
   const getRoomName = useCallback((roomId) => (
@@ -3185,15 +3248,20 @@ const FloorPlan3D = () => {
         await cableRunAPI.delete(projectId, routeId);
         hoveredObjectRef.current = null;
         setCursorContext(null);
+        let activeRestoredRouteId = null;
+        const routeRestorePayload = {
+          circuitId: routeData.circuitId || null,
+          lengthM: Number(routeData.lengthM || 0),
+          installationScope: routeData.installationScope || 'PLANNED',
+          pathJson: routeData.pathJson,
+          notes: routeData.notes || 'Трасса 3D',
+        };
         pushHistoryAction({
-          undo: async () => cableRunAPI.create(projectId, {
-            circuitId: routeData.circuitId || null,
-            lengthM: Number(routeData.lengthM || 0),
-            installationScope: routeData.installationScope || 'PLANNED',
-            pathJson: routeData.pathJson,
-            notes: routeData.notes || 'Трасса 3D',
-          }),
-          redo: async () => cableRunAPI.delete(projectId, routeId),
+          undo: async () => {
+            const recreated = await cableRunAPI.create(projectId, routeRestorePayload);
+            activeRestoredRouteId = recreated?.data?.id || null;
+          },
+          redo: async () => cableRunAPI.delete(projectId, activeRestoredRouteId || routeId),
           undoError: 'Не удалось отменить удаление трассы',
           redoError: 'Не удалось повторить удаление трассы',
         });
@@ -3289,8 +3357,8 @@ const FloorPlan3D = () => {
         removeLastNode();
       }
     };
-    window.addEventListener('keydown', onHistoryHotkeys);
-    return () => window.removeEventListener('keydown', onHistoryHotkeys);
+    document.addEventListener('keydown', onHistoryHotkeys, true);
+    return () => document.removeEventListener('keydown', onHistoryHotkeys, true);
   }, [deleteHoveredObject, redoLastAction, removeLastNode, undoLastAction]);
 
   const readinessText = useMemo(() => {
@@ -3310,7 +3378,7 @@ const FloorPlan3D = () => {
     <div className="floor-plan-3d-page">
       <header className="floor-plan-3d-header">
         <div>
-          <h1>3D редактор проекта #{projectId}</h1>
+          <h1>3D редактор проекта {projectName ? `${projectName}` : 'загрузка...'}</h1>
           <p>Полноэкранный режим для точной трассировки кабелей по ТКП 339-2022.</p>
         </div>
         <div className="floor-plan-3d-actions">
@@ -3356,6 +3424,7 @@ const FloorPlan3D = () => {
           openSaved3DCalculation={openSaved3DCalculation}
           selectedSavedCalcDetails={selectedSavedCalcDetails}
           projectId={projectId}
+          projectName={projectName}
           tool={tool}
           setTool={setTool}
           surfaceMode={surfaceMode}
@@ -3366,8 +3435,12 @@ const FloorPlan3D = () => {
           setParallelOffsetCm={setParallelOffsetCm}
           doorWidthCm={doorWidthCm}
           setDoorWidthCm={setDoorWidthCm}
+          doorHeightCm={doorHeightCm}
+          setDoorHeightCm={setDoorHeightCm}
           windowWidthCm={windowWidthCm}
           setWindowWidthCm={setWindowWidthCm}
+          windowHeightCm={windowHeightCm}
+          setWindowHeightCm={setWindowHeightCm}
           pointHeight={pointHeight}
           setPointHeight={setPointHeight}
           newRouteName={newRouteName}

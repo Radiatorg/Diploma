@@ -424,12 +424,19 @@ export function useRouteDraft({
 
   const removeLastNode = useCallback(() => {
     if (routeNodesRef.current.length === 0) return;
+    const snapshot = routeNodesRef.current.map((n) => ({ ...n }));
     routeNodesRef.current = routeNodesRef.current.slice(0, -1);
     routePointsRef.current = routePointsRef.current.slice(0, -1);
     setRoutePointCount(routeNodesRef.current.length);
     redrawRouteDraft();
     validateRouteDraft();
-  }, [redrawRouteDraft, validateRouteDraft]);
+    pushHistoryAction({
+      undo: () => rebuildRouteRefsFromNodes(snapshot),
+      redo: () => rebuildRouteRefsFromNodes(snapshot.slice(0, -1)),
+      undoError: 'Не удалось отменить удаление узла трассы',
+      redoError: 'Не удалось повторить удаление узла трассы',
+    });
+  }, [pushHistoryAction, rebuildRouteRefsFromNodes, redrawRouteDraft, validateRouteDraft]);
 
   const saveRoute = async () => {
     if (routePointsRef.current.length < 2) {
