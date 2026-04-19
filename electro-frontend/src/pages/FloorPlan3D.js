@@ -3283,8 +3283,8 @@ const FloorPlan3D = () => {
         setCursorContext(null);
         pushHistoryAction({
           undo: async () => electricalPointAPI.create(projectId, {
-            symbolType: pointData.symbolType,
-            powerConsumption: pointData.powerConsumption,
+            electricalSymbolId: pointData.electricalSymbol?.id,
+            ratedPowerW: pointData.ratedPowerW,
             positionX: pointData.positionX,
             positionY: pointData.positionY,
             heightFromFloor: pointData.heightFromFloor,
@@ -3292,6 +3292,7 @@ const FloorPlan3D = () => {
             circuitId: pointData.circuitId,
             installationScope: pointData.installationScope || 'PLANNED',
             notes: pointData.notes,
+            group: pointData.group,
           }),
           redo: async () => electricalPointAPI.delete(projectId, pointId),
           undoError: 'Не удалось отменить удаление точки',
@@ -3438,23 +3439,35 @@ const FloorPlan3D = () => {
   return (
     <div className="floor-plan-3d-page">
       <header className="floor-plan-3d-header">
-        <div>
-          <h1>3D редактор проекта {projectName ? `${projectName}` : 'загрузка...'}</h1>
-          <p>Полноэкранный режим для точной трассировки кабелей по ТКП 339-2022.</p>
+        <div className="header-left">
+          <h1>
+            <span className="header-icon">⚡</span>
+            {projectName || 'Загрузка...'}
+          </h1>
+          <span className="header-subtitle">3D редактор · ТКП 339-2022</span>
         </div>
+        {selectedRoom && (
+          <div className="header-room-pill">
+            {selectedRoom.name}
+            {insideRoomView && <span className="room-inside-tag">внутри</span>}
+          </div>
+        )}
         <div className="floor-plan-3d-actions">
-          <button type="button" className="btn-primary" onClick={loadSceneData}>
-            Обновить
+          <button type="button" className="btn-icon" onClick={undoLastAction} disabled={!canUndo} title="Отменить (Ctrl+Z)">↩</button>
+          <button type="button" className="btn-icon" onClick={redoLastAction} disabled={!canRedo} title="Повторить (Ctrl+Y)">↪</button>
+          <div className="header-divider" />
+          <button type="button" className="btn-primary btn-sm" onClick={loadSceneData}>
+            🔄 Обновить
           </button>
-          <button type="button" className="btn-secondary" onClick={() => navigate(`/projects/${projectId}/edit`)}>
-            Настройки проекта
+          <button type="button" className="btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}/edit`)}>
+            ⚙ Настройки
           </button>
-          <button type="button" className="btn-secondary" onClick={() => navigate(`/projects/${projectId}`)}>
-            К проекту
+          <button type="button" className="btn-secondary btn-sm" onClick={() => navigate(`/projects/${projectId}`)}>
+            ← К проекту
           </button>
           {insideRoomView && selectedRoomId && (
-            <button type="button" className="btn-secondary" onClick={() => focusRoom(selectedRoomId)}>
-              Выйти из комнаты
+            <button type="button" className="btn-secondary btn-sm" onClick={() => focusRoom(selectedRoomId)}>
+              🚪 Выйти
             </button>
           )}
         </div>
