@@ -330,32 +330,36 @@ const FloorPlan3D = () => {
         wallsGroupRef.current.add(ceilingOverlay);
         wallHoverMeshesRef.current.push(ceilingOverlay);
 
+        // Overlay planes are placed 0.14 m (14 cm) inside the room — well past the wall
+        // interior face (walls are typically 10–20 cm thick). This prevents the colored
+        // overlays from sitting inside the wall mesh and bleeding through the translucent wall.
+        const OVERLAY_INSET_M = 0.14;
         const wallPlanes = [
           {
             key: 'north',
             color: hoveredWallFace === 'north' ? 0xf59e0b : (wallFaceMode === 'north' || wallFaceMode === 'auto' ? 0x60a5fa : 0x475569),
-            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.minZ + WALL_INSET_M],
+            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.minZ + OVERLAY_INSET_M],
             size: [width, roomHeightM],
             rotY: Math.PI,
           },
           {
             key: 'south',
             color: hoveredWallFace === 'south' ? 0xf59e0b : (wallFaceMode === 'south' || wallFaceMode === 'auto' ? 0x818cf8 : 0x475569),
-            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.maxZ - WALL_INSET_M],
+            pos: [(bounds.minX + bounds.maxX) / 2, roomHeightM / 2, bounds.maxZ - OVERLAY_INSET_M],
             size: [width, roomHeightM],
             rotY: 0,
           },
           {
             key: 'west',
             color: hoveredWallFace === 'west' ? 0xf59e0b : (wallFaceMode === 'west' || wallFaceMode === 'auto' ? 0x38bdf8 : 0x475569),
-            pos: [bounds.minX + WALL_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
+            pos: [bounds.minX + OVERLAY_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
             size: [depth, roomHeightM],
             rotY: Math.PI / 2,
           },
           {
             key: 'east',
             color: hoveredWallFace === 'east' ? 0xf59e0b : (wallFaceMode === 'east' || wallFaceMode === 'auto' ? 0x0ea5e9 : 0x475569),
-            pos: [bounds.maxX - WALL_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
+            pos: [bounds.maxX - OVERLAY_INSET_M, roomHeightM / 2, (bounds.minZ + bounds.maxZ) / 2],
             size: [depth, roomHeightM],
             rotY: -Math.PI / 2,
           },
@@ -397,12 +401,16 @@ const FloorPlan3D = () => {
 
       const geometry = new THREE.BoxGeometry(length, wallHeight, thickness);
       const hasOpenings = wall.openings && wall.openings.length > 0;
-      const baseOpacity = !selectedRoomId || wall.roomId === selectedRoomId || isExternal ? 0.96 : 0.42;
+      // Internal walls of the selected room are kept semi-transparent (0.65) so the room
+      // interior is visible through them; external walls are near-opaque (0.88); other-room
+      // walls are faded (0.38). Opacity is constant regardless of openings — the dark-blue
+      // bleed that occurred previously is solved by moving the wall-face overlays outside
+      // the wall mesh geometry (OVERLAY_INSET_M = 0.14 instead of WALL_INSET_M = 0.03).
+      const baseOpacity = isExternal ? 0.88 : (!selectedRoomId || wall.roomId === selectedRoomId ? 0.65 : 0.38);
       const material = new THREE.MeshStandardMaterial({
         color: isExternal ? 0xb7bcc4 : 0x9aa1ab,
         transparent: true,
-        // Make walls with openings semi-transparent so points/routes behind them stay visible
-        opacity: hasOpenings ? Math.min(baseOpacity, 0.22) : baseOpacity,
+        opacity: baseOpacity,
         polygonOffset: !isExternal,
         polygonOffsetFactor: !isExternal ? -1 : 0,
         polygonOffsetUnits: !isExternal ? -1 : 0,
@@ -1304,24 +1312,38 @@ const FloorPlan3D = () => {
 
   const findWallForFace = useCallback((face, bounds) => {
     const tol = 0.35;
+    // Derive bounds from the room's actual wall coordinates so that the match is
+    // correct even when room.positionX/Y hasn't been synced yet (e.g. right after
+    // autoPlaceSelectedRoom which centers walls on the floor plan).
+    const roomWalls = sceneData.walls.filter(
+      (w) => String(w.roomId) === String(selectedRoomId),
+    );
+    const activeBounds = roomWalls.length >= 2
+      ? {
+        minX: Math.min(...roomWalls.flatMap((w) => [toMeters(w.startX), toMeters(w.endX)])),
+        minZ: Math.min(...roomWalls.flatMap((w) => [toMeters(w.startY), toMeters(w.endY)])),
+        maxX: Math.max(...roomWalls.flatMap((w) => [toMeters(w.startX), toMeters(w.endX)])),
+        maxZ: Math.max(...roomWalls.flatMap((w) => [toMeters(w.startY), toMeters(w.endY)])),
+      }
+      : bounds;
     const matchesFace = (wall) => {
       const sx = toMeters(wall.startX);
       const sz = toMeters(wall.startY);
       const ex = toMeters(wall.endX);
       const ez = toMeters(wall.endY);
-      if (face === 'north') return Math.abs(sz - bounds.minZ) < tol && Math.abs(ez - bounds.minZ) < tol;
-      if (face === 'south') return Math.abs(sz - bounds.maxZ) < tol && Math.abs(ez - bounds.maxZ) < tol;
-      if (face === 'west') return Math.abs(sx - bounds.minX) < tol && Math.abs(ex - bounds.minX) < tol;
-      if (face === 'east') return Math.abs(sx - bounds.maxX) < tol && Math.abs(ex - bounds.maxX) < tol;
+      if (face === 'north') return Math.abs(sz - activeBounds.minZ) < tol && Math.abs(ez - activeBounds.minZ) < tol;
+      if (face === 'south') return Math.abs(sz - activeBounds.maxZ) < tol && Math.abs(ez - activeBounds.maxZ) < tol;
+      if (face === 'west') return Math.abs(sx - activeBounds.minX) < tol && Math.abs(ex - activeBounds.minX) < tol;
+      if (face === 'east') return Math.abs(sx - activeBounds.maxX) < tol && Math.abs(ex - activeBounds.maxX) < tol;
       return false;
     };
-    // First try walls that belong to this room
+    // Only search walls that belong to this room
     const withRoom = sceneData.walls.find(
       (wall) => String(wall.roomId) === String(selectedRoomId) && matchesFace(wall),
     );
     if (withRoom) return withRoom;
-    // Fallback: any wall matching the face geometry (handles walls without roomId)
-    return sceneData.walls.find(matchesFace) || null;
+    // Fallback: walls without roomId that match the face geometry (e.g. just created)
+    return sceneData.walls.find((wall) => !wall.roomId && matchesFace(wall)) || null;
   }, [sceneData.walls, selectedRoomId, toMeters]);
 
   const ensureRoomEditingAllowed = useCallback(() => {
@@ -1359,13 +1381,33 @@ const FloorPlan3D = () => {
       if (!ensureRoomEditingAllowed()) return;
 
       const wallHit = getPointerWallHit(event, { wallsOnly: true });
-      const clickFace = wallHit?.wallFace;
+      let clickFace = wallHit?.wallFace ?? null;
+      let hitPoint = wallHit?.point ?? null;
+
+      // Fallback: when the camera is nearly perpendicular to the wall (e.g. top-down view),
+      // the thin overlay planes can't be hit. Determine the nearest wall face from a
+      // ground/height intersection instead.
+      if ((!clickFace || !WALL_CARDINAL_FACES.includes(clickFace)) && selectedRoomBounds) {
+        const fallbackHit = getGroundIntersection(event)
+          || getIntersectionOnHeight(event, activeRoomHeightM / 2);
+        if (fallbackHit && isPointInsideBounds(fallbackHit, selectedRoomBounds)) {
+          const dN = Math.abs(fallbackHit.z - selectedRoomBounds.minZ);
+          const dS = Math.abs(fallbackHit.z - selectedRoomBounds.maxZ);
+          const dW = Math.abs(fallbackHit.x - selectedRoomBounds.minX);
+          const dE = Math.abs(fallbackHit.x - selectedRoomBounds.maxX);
+          const minD = Math.min(dN, dS, dW, dE);
+          if (minD === dN) clickFace = 'north';
+          else if (minD === dS) clickFace = 'south';
+          else if (minD === dW) clickFace = 'west';
+          else clickFace = 'east';
+          hitPoint = fallbackHit;
+        }
+      }
+
       if (!clickFace || !WALL_CARDINAL_FACES.includes(clickFace)) {
         addToast('Наведите курсор на стену (она подсветится) и нажмите ЛКМ.', 'warn');
         return;
       }
-
-      const hitPoint = wallHit.point;
       const snapped = getWallSnapPointFromBounds(
         hitPoint,
         selectedRoomBounds,
@@ -1389,8 +1431,8 @@ const FloorPlan3D = () => {
           const faceWallCoords = {
             north: { startX: px, startY: py, endX: px + rw, endY: py },
             south: { startX: px, startY: py + rh, endX: px + rw, endY: py + rh },
-            west:  { startX: px, startY: py, endX: px, endY: py + rh },
-            east:  { startX: px + rw, startY: py, endX: px + rw, endY: py + rh },
+            west: { startX: px, startY: py, endX: px, endY: py + rh },
+            east: { startX: px + rw, startY: py, endX: px + rw, endY: py + rh },
           };
           const coords = faceWallCoords[clickFace];
           if (coords) {
@@ -1908,9 +1950,28 @@ const FloorPlan3D = () => {
     }
 
     const openingPlacementTools = ['add-door', 'add-window'];
-    const hoveredFace = openingPlacementTools.includes(tool)
-      ? (getPointerWallHit(event, { wallsOnly: true })?.wallFace ?? null)
-      : getPointerWallFace(event);
+    let hoveredFace;
+    if (openingPlacementTools.includes(tool)) {
+      hoveredFace = getPointerWallHit(event, { wallsOnly: true })?.wallFace ?? null;
+      // Fallback for steep camera angles
+      if (!hoveredFace && selectedRoomBounds) {
+        const fbHit = getGroundIntersection(event)
+          || getIntersectionOnHeight(event, activeRoomHeightM / 2);
+        if (fbHit && isPointInsideBounds(fbHit, selectedRoomBounds)) {
+          const dN = Math.abs(fbHit.z - selectedRoomBounds.minZ);
+          const dS = Math.abs(fbHit.z - selectedRoomBounds.maxZ);
+          const dW = Math.abs(fbHit.x - selectedRoomBounds.minX);
+          const dE = Math.abs(fbHit.x - selectedRoomBounds.maxX);
+          const minD = Math.min(dN, dS, dW, dE);
+          if (minD === dN) hoveredFace = 'north';
+          else if (minD === dS) hoveredFace = 'south';
+          else if (minD === dW) hoveredFace = 'west';
+          else hoveredFace = 'east';
+        }
+      }
+    } else {
+      hoveredFace = getPointerWallFace(event);
+    }
     if (hoveredFace !== hoveredWallFace) {
       setHoveredWallFace(hoveredFace);
     }
@@ -2029,10 +2090,30 @@ const FloorPlan3D = () => {
         }
       } else if (openingTools.includes(tool) && !objectContext) {
         const wallHit = getPointerWallHit(event, { wallsOnly: true });
-        const clickFace = wallHit?.wallFace;
-        if (wallHit?.point && clickFace && WALL_CARDINAL_FACES.includes(clickFace) && selectedRoomBounds) {
+        let clickFace = wallHit?.wallFace ?? null;
+        let ghostBasePoint = wallHit?.point ?? null;
+
+        // Fallback for steep camera angles (same logic as in handleCanvasClick)
+        if ((!clickFace || !WALL_CARDINAL_FACES.includes(clickFace)) && selectedRoomBounds) {
+          const fallbackHit = getGroundIntersection(event)
+            || getIntersectionOnHeight(event, activeRoomHeightM / 2);
+          if (fallbackHit && isPointInsideBounds(fallbackHit, selectedRoomBounds)) {
+            const dN = Math.abs(fallbackHit.z - selectedRoomBounds.minZ);
+            const dS = Math.abs(fallbackHit.z - selectedRoomBounds.maxZ);
+            const dW = Math.abs(fallbackHit.x - selectedRoomBounds.minX);
+            const dE = Math.abs(fallbackHit.x - selectedRoomBounds.maxX);
+            const minD = Math.min(dN, dS, dW, dE);
+            if (minD === dN) clickFace = 'north';
+            else if (minD === dS) clickFace = 'south';
+            else if (minD === dW) clickFace = 'west';
+            else clickFace = 'east';
+            ghostBasePoint = fallbackHit;
+          }
+        }
+
+        if (ghostBasePoint && clickFace && WALL_CARDINAL_FACES.includes(clickFace) && selectedRoomBounds) {
           const snapped = getWallSnapPointFromBounds(
-            wallHit.point,
+            ghostBasePoint,
             selectedRoomBounds,
             tool === 'add-door' ? 1.0 : 1.5,
             clickFace,
@@ -2663,6 +2744,21 @@ const FloorPlan3D = () => {
         },
       ];
       await wallAPI.saveBatch(projectId, wallsPayload);
+      // Sync room.positionX/Y so getRoomBounds and wall overlays align with actual walls.
+      try {
+        await roomAPI.update(projectId, selectedRoom.id, {
+          name: selectedRoom.name,
+          roomTypeId: selectedRoom.roomTypeId,
+          area: selectedRoom.area,
+          description: selectedRoom.description || '',
+          positionX: x0,
+          positionY: y0,
+          width: widthCm,
+          height: heightCm,
+        });
+      } catch (_syncErr) {
+        // Non-blocking: walls are placed, bounds may be slightly off until next full save.
+      }
       await loadSceneData();
       if (cameraRef.current && controlsRef.current) {
         const centerX = toMeters(x0 + widthCm / 2);
@@ -2705,6 +2801,12 @@ const FloorPlan3D = () => {
       const normalizedWidthCm = Number(widthCm.toFixed(2));
       const normalizedLengthCm = Number(lengthCm.toFixed(2));
       await roomAPI.update(projectId, selectedRoom.id, {
+        name: selectedRoom.name,
+        roomTypeId: selectedRoom.roomTypeId,
+        area: selectedRoom.area,
+        description: selectedRoom.description || '',
+        positionX: selectedRoom.positionX,
+        positionY: selectedRoom.positionY,
         width: normalizedWidthCm,
         height: normalizedLengthCm,
       });
@@ -2938,7 +3040,7 @@ const FloorPlan3D = () => {
       </header>
 
       <main className="floor-plan-3d-main">
-                <FloorPlan3DSidebar
+        <FloorPlan3DSidebar
           sceneData={sceneData}
           focusRoom={focusRoom}
           enterRoom={enterRoom}
