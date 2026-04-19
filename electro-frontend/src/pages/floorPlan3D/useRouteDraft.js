@@ -6,6 +6,67 @@ import { formatSnapRadiusMetersRu, inferRouteSurfaceKindFromHeightM } from './ro
 
 const MIN_SEGMENT_M = 0.05;
 
+/** TKP 8.4.5: max 12 conductors (= 4 three-wire group lines) in one conduit.
+ *  Returns the maximum number of existing routes whose path passes within
+ *  CONDUIT_PROXIMITY_M of any sample point along `draftPoints`.
+ *  The draft itself counts as +1 wire group.
+ */
+const CONDUIT_PROXIMITY_M = 0.1;   // routes within 10 cm are considered same conduit
+const CONDUIT_MAX_GROUPS = 4;      // 4 × 3 wires = 12 conductors per TKP 8.4.5
+const CONDUIT_SAMPLE_STEP_M = 0.2; // sample draft every 20 cm
+
+function sampleSegment(a, b, step) {
+  const pts = [];
+  const len = a.distanceTo(b);
+  if (len < 1e-6) { pts.push(a.clone()); return pts; }
+  const steps = Math.max(1, Math.ceil(len / step));
+  for (let i = 0; i <= steps; i += 1) {
+    pts.push(a.clone().lerp(b, i / steps));
+  }
+  return pts;
+}
+
+function countRoutesBundledWithDraft(draftPoints, existingRoutes, selectedRouteId) {
+  if (!draftPoints || draftPoints.length < 2) return 0;
+
+  // Pre-parse existing route paths (excluding the route being edited)
+  const parsedRoutes = [];
+  existingRoutes.forEach((route) => {
+    if (selectedRouteId && String(route.id) === String(selectedRouteId)) return;
+    if (!route.pathJson) return;
+    try {
+      const nodes = JSON.parse(route.pathJson);
+      if (!Array.isArray(nodes) || nodes.length < 2) return;
+      const pts = nodes.map((n) => new THREE.Vector3(Number(n.x), Number(n.z), Number(n.y)));
+      parsedRoutes.push(pts);
+    } catch { /* ignore */ }
+  });
+  if (parsedRoutes.length === 0) return 0;
+
+  // Sample the draft and for each sample find how many existing routes are near
+  let maxBundle = 0;
+  for (let i = 1; i < draftPoints.length; i += 1) {
+    const samples = sampleSegment(draftPoints[i - 1], draftPoints[i], CONDUIT_SAMPLE_STEP_M);
+    for (const sp of samples) {
+      let nearby = 0;
+      for (const rPts of parsedRoutes) {
+        let isNear = false;
+        for (let j = 1; j < rPts.length && !isNear; j += 1) {
+          // Distance from sample point to segment rPts[j-1]→rPts[j]
+          const ab = rPts[j].clone().sub(rPts[j - 1]);
+          const ac = sp.clone().sub(rPts[j - 1]);
+          const t = Math.max(0, Math.min(1, ac.dot(ab) / (ab.lengthSq() || 1)));
+          const closest = rPts[j - 1].clone().addScaledVector(ab, t);
+          if (sp.distanceTo(closest) <= CONDUIT_PROXIMITY_M) isNear = true;
+        }
+        if (isNear) nearby += 1;
+      }
+      if (nearby > maxBundle) maxBundle = nearby;
+    }
+  }
+  return maxBundle; // number of EXISTING routes sharing the conduit (draft not counted yet)
+}
+
 export function useRouteDraft({
   projectId,
   routesGroupRef,
@@ -258,6 +319,20 @@ export function useRouteDraft({
       }
     }
 
+    /* ТКП 8.4.5: не более 12 проводников (= 4 трёхпроводные групповые линии) в одном канале */
+    if (points.length >= 2) {
+      const existingNearby = countRoutesBundledWithDraft(points, sceneData.routes, selectedRouteId);
+      if (existingNearby >= CONDUIT_MAX_GROUPS) {
+        messages.push(
+          `ТКП 339 п.8.4.5: в одном канале (трубе/коробе) допускается не более 12 проводников — то есть 4 групповые трёхпроводные линии. В данном участке уже проложено ${existingNearby} трасс(ы). Проложите трассу по другому маршруту или используйте отдельный канал.`,
+        );
+      } else if (existingNearby === CONDUIT_MAX_GROUPS - 1) {
+        messages.push(
+          `ТКП 339 п.8.4.5: в данном участке уже ${existingNearby} трасс(ы) — при добавлении этой трассы канал будет заполнен до предела (12 проводников = 4 линии). Эта трасса разрешена, следующая в том же канале — нет.`,
+        );
+      }
+    }
+
     if (selectedRoomId && nodes.length >= 2) {
       const startPoint = sceneData.points.find((p) => p.id === nodes[0]?.pointId);
       const endPoint = sceneData.points.find((p) => p.id === nodes[nodes.length - 1]?.pointId);
@@ -290,7 +365,7 @@ export function useRouteDraft({
     }
 
     return messages;
-  }, [getRouteModeHeight, isPointInsideBounds, routePlacementMode, sceneData.points, selectedCircuitId, selectedRoomBounds, selectedRoomId, routesGroupRef]);
+  }, [getRouteModeHeight, isPointInsideBounds, routePlacementMode, sceneData.points, sceneData.routes, selectedCircuitId, selectedRoomBounds, selectedRoomId, selectedRouteId, routesGroupRef]);
 
   const clearRouteDraft = () => {
     routePointsRef.current = [];
