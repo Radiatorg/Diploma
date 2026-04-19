@@ -4,8 +4,8 @@ export const DEFAULT_ROOM_HEIGHT_M = 2.8;
 
 function buildOutletGroup(accentColor) {
   const group = new THREE.Group();
-  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
-  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
+  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.7, emissive: 0x888880, emissiveIntensity: 0.4 });
+  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5, emissive: accentColor, emissiveIntensity: 0.5 });
   const holeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
 
   const border = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), borderMat);
@@ -32,9 +32,9 @@ function buildOutletGroup(accentColor) {
 
 function buildSwitchGroup(accentColor) {
   const group = new THREE.Group();
-  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf0ede8, roughness: 0.8 });
-  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
-  const rockerMat = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.5 });
+  const plateMat = new THREE.MeshStandardMaterial({ color: 0xf0ede8, roughness: 0.7, emissive: 0x888880, emissiveIntensity: 0.4 });
+  const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5, emissive: accentColor, emissiveIntensity: 0.5 });
+  const rockerMat = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.4, emissive: 0x667788, emissiveIntensity: 0.3 });
 
   const border = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.018), borderMat);
   border.position.z = -0.004;
@@ -96,7 +96,7 @@ function buildLightGroup(accentColor) {
 function buildSourceGroup() {
   const group = new THREE.Group();
 
-  const boxMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.65, metalness: 0.35 });
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.55, metalness: 0.35, emissive: 0x222830, emissiveIntensity: 0.6 });
   const box = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.15, 0.045), boxMat);
   group.add(box);
 

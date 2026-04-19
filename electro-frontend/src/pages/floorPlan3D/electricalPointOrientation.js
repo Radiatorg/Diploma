@@ -64,7 +64,7 @@ export function orientElectricalPointGroup(group, x, y, z, bounds, roomHeightM, 
   cand.sort((a, b) => a.d - b.d);
   const inward = cand[0].inward.clone();
 
-  const surfaceOffset = 0.022;
+  const surfaceOffset = 0.15;
   group.position.set(
     x + inward.x * surfaceOffset,
     y + inward.y * surfaceOffset,

@@ -406,16 +406,18 @@ const FloorPlan3D = () => {
       // walls are faded (0.38). Opacity is constant regardless of openings — the dark-blue
       // bleed that occurred previously is solved by moving the wall-face overlays outside
       // the wall mesh geometry (OVERLAY_INSET_M = 0.14 instead of WALL_INSET_M = 0.03).
-      const baseOpacity = isExternal ? 0.88 : (!selectedRoomId || wall.roomId === selectedRoomId ? 0.65 : 0.38);
+      const baseOpacity = isExternal ? 0.82 : (!selectedRoomId || wall.roomId === selectedRoomId ? 0.38 : 0.22);
       const material = new THREE.MeshStandardMaterial({
         color: isExternal ? 0xb7bcc4 : 0x9aa1ab,
         transparent: true,
         opacity: baseOpacity,
-        polygonOffset: !isExternal,
-        polygonOffsetFactor: !isExternal ? -1 : 0,
-        polygonOffsetUnits: !isExternal ? -1 : 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 2,
+        polygonOffsetUnits: 4,
       });
       const wallMesh = new THREE.Mesh(geometry, material);
+      wallMesh.renderOrder = 1;
       const wallAngle = -Math.atan2(dz, dx);
       wallMesh.position.set((startX + endX) / 2, wallHeight / 2, (startZ + endZ) / 2);
       wallMesh.rotation.y = wallAngle;
@@ -434,12 +436,32 @@ const FloorPlan3D = () => {
           const yCenter = opening.openingType === 'door' ? oHeightM / 2 : Math.max(wallHeight - oHeightM / 2 - 0.3, oHeightM / 2);
           const cx = startX + wallDirX * (posM + oWidthM / 2);
           const cz = startZ + wallDirZ * (posM + oWidthM / 2);
+
+          // Offset the opening group to the interior face of the wall so it
+          // protrudes into the room rather than being embedded in the wall mesh.
+          const wallNormalX = -dz / length;
+          const wallNormalZ = dx / length;
+          const wallRoom = sceneData.rooms.find((r) => String(r.id) === String(wall.roomId));
+          const wallRoomB = wallRoom ? getRoomBounds(wallRoom, sceneData.walls) : isolatedBounds;
+          const rcx = wallRoomB ? (wallRoomB.minX + wallRoomB.maxX) / 2 : cx;
+          const rcz = wallRoomB ? (wallRoomB.minZ + wallRoomB.maxZ) / 2 : cz;
+          const dotN = wallNormalX * (rcx - cx) + wallNormalZ * (rcz - cz);
+          const inX = dotN >= 0 ? wallNormalX : -wallNormalX;
+          const inZ = dotN >= 0 ? wallNormalZ : -wallNormalZ;
+          // Move to interior face (thickness/2) + small protrusion (3 cm)
+          const faceOffset = thickness / 2 + 0.03;
+
           const openingGroup = opening.openingType === 'door'
             ? buildDoorGroup(oWidthM, oHeightM, thickness)
             : buildWindowGroup(oWidthM, oHeightM, thickness);
-          openingGroup.position.set(cx, yCenter, cz);
+          openingGroup.position.set(cx + inX * faceOffset, yCenter, cz + inZ * faceOffset);
           openingGroup.rotation.y = wallAngle;
-          openingGroup.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+          openingGroup.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.renderOrder = 2;
+            }
+          });
 
           const hitBoxGeo = new THREE.BoxGeometry(oWidthM, oHeightM, thickness + 0.06);
           const hitBoxMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
@@ -479,7 +501,12 @@ const FloorPlan3D = () => {
       }
 
       group.castShadow = true;
-      group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
+      group.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.renderOrder = 2;
+        }
+      });
 
       const hitGeo = new THREE.SphereGeometry(ROUTE_EQUIPMENT_RAY_HIT_RADIUS_M, 8, 8);
       const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
@@ -497,18 +524,29 @@ const FloorPlan3D = () => {
         const path = JSON.parse(route.pathJson);
         if (!Array.isArray(path) || path.length < 2) return;
         if (isolateRoomView && isolatedBounds) {
-          const pad = 0.12;
-          const pathInsideRoom = path.every((node) => {
+          // Require at least one node clearly inside the room (not just near boundary)
+          // so routes from adjacent rooms that share wall coordinates are excluded.
+          const anyNodeInside = path.some((node) => {
             const px = toMeters(node.x);
             const pz = toMeters(node.y);
             return (
-              px >= isolatedBounds.minX - pad
-              && px <= isolatedBounds.maxX + pad
-              && pz >= isolatedBounds.minZ - pad
-              && pz <= isolatedBounds.maxZ + pad
+              px > isolatedBounds.minX + 0.04
+              && px < isolatedBounds.maxX - 0.04
+              && pz > isolatedBounds.minZ + 0.04
+              && pz < isolatedBounds.maxZ - 0.04
             );
           });
-          if (!pathInsideRoom) return;
+          const allNodesNearRoom = path.every((node) => {
+            const px = toMeters(node.x);
+            const pz = toMeters(node.y);
+            return (
+              px >= isolatedBounds.minX - 0.05
+              && px <= isolatedBounds.maxX + 0.05
+              && pz >= isolatedBounds.minZ - 0.05
+              && pz <= isolatedBounds.maxZ + 0.05
+            );
+          });
+          if (!anyNodeInside || !allNodesNearRoom) return;
         }
         const points3D = path.map((node) => new THREE.Vector3(toMeters(node.x), toMeters(node.z || 0), toMeters(node.y)));
         const lineGeo = new THREE.BufferGeometry().setFromPoints(points3D);
@@ -678,12 +716,16 @@ const FloorPlan3D = () => {
     controls.target.set(5, 0, 4);
     controlsRef.current = controls;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.62);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.4);
     scene.add(ambient);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.9);
+    const directional = new THREE.DirectionalLight(0xffffff, 1.1);
     directional.position.set(10, 20, 5);
     directional.castShadow = true;
     scene.add(directional);
+    // Fill light from opposite side so wall-mounted elements are lit from the front
+    const fill = new THREE.DirectionalLight(0xffffff, 0.7);
+    fill.position.set(-8, 4, -8);
+    scene.add(fill);
 
     const wallsGroup = new THREE.Group();
     const pointsGroup = new THREE.Group();
@@ -1042,11 +1084,13 @@ const FloorPlan3D = () => {
     if (!hits.length) return null;
     const pointData = hits[0].object?.userData?.pointData;
     if (!pointData) return null;
-    const px = toMeters(pointData.positionX);
-    const pz = toMeters(pointData.positionY);
-    const py = Math.max(toMeters(pointData.heightFromFloor || routeHeight), 0.05);
+    // Use the actual world position of the hit sphere — it is already offset
+    // 0.15 m outward from the wall by orientElectricalPointGroup, so this
+    // gives the visual centre of the element rather than the raw DB coordinate.
+    const worldPos = new THREE.Vector3();
+    hits[0].object.getWorldPosition(worldPos);
     return {
-      point: new THREE.Vector3(px, py, pz),
+      point: worldPos,
       pointId: pointData.id,
       symbolType: pointData?.electricalSymbol?.type || '',
     };
@@ -1059,6 +1103,7 @@ const FloorPlan3D = () => {
   ) => {
     let nearest = null;
     let minDistance = Number.POSITIVE_INFINITY;
+    let nearestPoint = null;
     pointsForSnap.forEach((point) => {
       const px = toMeters(point.positionX);
       const pz = toMeters(point.positionY);
@@ -1067,22 +1112,40 @@ const FloorPlan3D = () => {
       const distance = Math.hypot(candidate.x - px, candidate.z - pz);
       if (distance < minDistance) {
         minDistance = distance;
-        nearest = {
-          x: px,
-          z: pz,
-          y: py,
-          pointId: point.id,
-          symbolType: point?.electricalSymbol?.type || '',
-        };
+        nearestPoint = point;
+        nearest = { x: px, z: pz, y: py };
       }
     });
     if (!nearest || minDistance > maxRadiusM) {
       return { point: candidate, pointId: null, symbolType: null };
     }
+    // Compute the visual centre of the element: same inward-offset logic as
+    // orientElectricalPointGroup (surfaceOffset = 0.15 m from nearest wall face).
+    const pRoom = sceneData.rooms.find((r) => r.id === nearestPoint.roomId);
+    const pBounds = getRoomBounds(pRoom);
+    let visualX = nearest.x;
+    let visualZ = nearest.z;
+    if (pBounds) {
+      const fy = 0.05;
+      const cy = Math.max(activeRoomHeightM, 0.25) - 0.05;
+      const isOnWall = nearest.y > fy + 0.12 && nearest.y < cy - 0.12;
+      if (isOnWall) {
+        const SURFACE_OFFSET = 0.15;
+        const cands = [
+          { d: Math.abs(nearest.z - (pBounds.minZ + WALL_INSET_M)), ix: 0, iz: 1 },
+          { d: Math.abs(nearest.z - (pBounds.maxZ - WALL_INSET_M)), ix: 0, iz: -1 },
+          { d: Math.abs(nearest.x - (pBounds.minX + WALL_INSET_M)), ix: 1, iz: 0 },
+          { d: Math.abs(nearest.x - (pBounds.maxX - WALL_INSET_M)), ix: -1, iz: 0 },
+        ];
+        cands.sort((a, b) => a.d - b.d);
+        visualX = nearest.x + cands[0].ix * SURFACE_OFFSET;
+        visualZ = nearest.z + cands[0].iz * SURFACE_OFFSET;
+      }
+    }
     return {
-      point: new THREE.Vector3(nearest.x, nearest.y, nearest.z),
-      pointId: nearest.pointId,
-      symbolType: nearest.symbolType,
+      point: new THREE.Vector3(visualX, nearest.y, visualZ),
+      pointId: nearestPoint.id,
+      symbolType: nearestPoint?.electricalSymbol?.type || '',
     };
   };
 
@@ -1347,6 +1410,10 @@ const FloorPlan3D = () => {
   }, [sceneData.walls, selectedRoomId, toMeters]);
 
   const ensureRoomEditingAllowed = useCallback(() => {
+    if (!insideRoomView) {
+      addToast('Сначала войдите в комнату: выберите её в левой панели и нажмите «Войти».', 'info');
+      return false;
+    }
     if (!selectedRoomId) {
       addToast('Сначала выберите комнату в левой панели.', 'info');
       return false;
@@ -1356,7 +1423,7 @@ const FloorPlan3D = () => {
       return false;
     }
     return true;
-  }, [selectedRoomBounds, selectedRoomId, addToast]);
+  }, [addToast, insideRoomView, selectedRoomBounds, selectedRoomId]);
 
   const handleCanvasClick = async (event) => {
     if (suppressClickRef.current) {
@@ -1373,6 +1440,10 @@ const FloorPlan3D = () => {
     if (loading) return;
 
     if (tool === 'delete') {
+      if (!insideRoomView) {
+        addToast('Сначала войдите в комнату: выберите её в левой панели и нажмите «Войти».', 'info');
+        return;
+      }
       await deleteHoveredObject();
       return;
     }
@@ -2230,21 +2301,25 @@ const FloorPlan3D = () => {
                   transparent: true,
                   opacity: 0.9,
                   depthWrite: false,
+                  depthTest: false,
                 });
                 const line = new THREE.Line(geom, mat);
                 line.computeLineDistances();
+                line.renderOrder = 15;
                 g.add(line);
                 const sphere = new THREE.Mesh(
                   new THREE.SphereGeometry(0.035, 10, 10),
-                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, depthWrite: false })
+                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false })
                 );
+                sphere.renderOrder = 15;
                 sphere.position.copy(snapped);
                 g.add(sphere);
               } else if (g) {
                 const sphere = new THREE.Mesh(
                   new THREE.SphereGeometry(0.04, 12, 12),
-                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.75, depthWrite: false })
+                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.75, depthWrite: false, depthTest: false })
                 );
+                sphere.renderOrder = 15;
                 sphere.position.copy(snapped);
                 g.add(sphere);
               }
@@ -2323,6 +2398,10 @@ const FloorPlan3D = () => {
   };
 
   const focusRoom = useCallback((roomId) => {
+    if (insideRoomView && selectedRoomId && roomId !== selectedRoomId) {
+      addToast('Сначала выйдите из текущей комнаты (кнопка «Выйти из комнаты» вверху).', 'warn');
+      return;
+    }
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
     const viewHeightM = roomHeightById[roomId] || ROOM_HEIGHT_M;
@@ -2334,9 +2413,13 @@ const FloorPlan3D = () => {
     cameraRef.current.position.set(centerX + 3.6, viewHeightM + 2.8, centerZ + 3.6);
     controlsRef.current.update();
     setInsideRoomView(false);
-  }, [ROOM_HEIGHT_M, getRoomBounds, roomHeightById, sceneData.rooms, sceneData.walls]);
+  }, [ROOM_HEIGHT_M, addToast, getRoomBounds, insideRoomView, roomHeightById, sceneData.rooms, sceneData.walls, selectedRoomId]);
 
   const enterRoom = useCallback((roomId) => {
+    if (insideRoomView && selectedRoomId && roomId !== selectedRoomId) {
+      addToast('Сначала выйдите из текущей комнаты (кнопка «Выйти из комнаты» вверху).', 'warn');
+      return;
+    }
     const room = sceneData.rooms.find((r) => r.id === roomId);
     const bounds = getRoomBounds(room, sceneData.walls);
     setSelectedRoomId(roomId);
@@ -2348,7 +2431,7 @@ const FloorPlan3D = () => {
     controlsRef.current.target.set(centerX, 1.45, lookZ);
     controlsRef.current.update();
     setInsideRoomView(true);
-  }, [getRoomBounds, sceneData.rooms, sceneData.walls]);
+  }, [addToast, getRoomBounds, insideRoomView, sceneData.rooms, sceneData.walls, selectedRoomId]);
 
   const setCameraToFloorPlane = useCallback((roomId) => {
     const room = sceneData.rooms.find((r) => r.id === roomId);
@@ -2442,7 +2525,11 @@ const FloorPlan3D = () => {
   }, [insideRoomView, surfaceMode]);
 
   // When the active tool changes, auto-set pointHeight to ТКП-compliant defaults
+  const prevToolRef = useRef(tool);
   useEffect(() => {
+    const prevTool = prevToolRef.current;
+    prevToolRef.current = tool;
+
     if (tool === 'add-switch') {
       setPointHeight((prev) => (prev >= 80 && prev <= 170 ? prev : 100));
     } else if (tool === 'add-source') {
@@ -2454,6 +2541,10 @@ const FloorPlan3D = () => {
       setSurfaceMode('ceiling');
       // Светильник только на потолке — высота в панели для превью/контекста около уровня потолка
       setPointHeight((prev) => (prev >= 200 ? prev : 250));
+    }
+    // When leaving add-light, switch back from ceiling to wall mode
+    if (prevTool === 'add-light' && tool !== 'add-light') {
+      setSurfaceMode('wall');
     }
     const placementTools = ['add-outlet', 'add-switch', 'add-light', 'add-source', 'add-door', 'add-window', 'draw-route'];
     if (!placementTools.includes(tool)) {
@@ -2858,6 +2949,20 @@ const FloorPlan3D = () => {
     const hovered = hoveredObjectRef.current;
     if (!hovered) return;
 
+    // While inside a room, block deletion of objects belonging to other rooms.
+    if (insideRoomView && selectedRoomId) {
+      if (hovered.type === 'point' && hovered.data?.roomId
+        && String(hovered.data.roomId) !== String(selectedRoomId)) {
+        addToast('Нельзя удалять объекты другой комнаты.', 'warn');
+        return;
+      }
+      if (hovered.type === 'opening' && hovered.data?.wallRaw?.roomId
+        && String(hovered.data.wallRaw.roomId) !== String(selectedRoomId)) {
+        addToast('Нельзя удалять объекты другой комнаты.', 'warn');
+        return;
+      }
+    }
+
     if (hovered.type === 'point') {
       const pointData = hovered.data;
       const pointId = pointData.id;
@@ -2972,7 +3077,7 @@ const FloorPlan3D = () => {
         addToast('Не удалось удалить проём', 'error');
       }
     }
-  }, [addToast, loadSceneData, projectId, pushHistoryAction]);
+  }, [addToast, insideRoomView, loadSceneData, projectId, pushHistoryAction, selectedRoomId]);
 
   useEffect(() => {
     const onHistoryHotkeys = (event) => {
