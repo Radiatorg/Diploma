@@ -203,8 +203,15 @@ export function useRouteDraft({
         || (start.symbolType === 'outlet' && end.symbolType === 'switch')) {
         messages.push('Прямая трасса между выключателем и розеткой запрещена — добавьте промежуточный узел.');
       }
+      if ((start.symbolType === 'switch' && end.symbolType === 'light')
+        || (start.symbolType === 'light' && end.symbolType === 'switch')) {
+        messages.push('Прямая трасса между выключателем и светильником запрещена — добавьте промежуточный узел.');
+      }
       if (start.symbolType === 'switch' && end.symbolType === 'switch') {
         messages.push('Трасса не может начинаться и заканчиваться на выключателях.');
+      }
+      if (start.symbolType === 'light' && end.symbolType === 'light') {
+        messages.push('Трасса не может начинаться и заканчиваться на светильниках.');
       }
 
       const roomSources = selectedRoomId

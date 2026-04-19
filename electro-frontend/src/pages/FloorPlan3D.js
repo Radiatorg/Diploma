@@ -1101,6 +1101,10 @@ const FloorPlan3D = () => {
     pointsForSnap = sceneData.points,
     maxRadiusM = ROUTE_EQUIPMENT_PLANAR_SNAP_RADIUS_M,
   ) => {
+    /* Find nearest electrical point (outlet, switch, or lamp) within snap radius.
+       Supports auto-snapping route nodes to any electrical point on the plan.
+       For wall-mounted points, computes visual center offset from wall face.
+       For ceiling/floor lamps, uses point coordinates directly. */
     let nearest = null;
     let minDistance = Number.POSITIVE_INFINITY;
     let nearestPoint = null;
@@ -1225,9 +1229,18 @@ const FloorPlan3D = () => {
   }, [activeRoomHeightM, pointHeight, toCentimeters]);
 
   /**
-   * Узел трассы — только на грани комнаты: луч к ближайшему попаданию (стена | пол | потолок) или срез у стены по базовой высоте.
-   * modeFilter: auto — все варианты; иначе только выбранная поверхность.
-   * pickContext: в режиме auto при согласованном наведении сужаем кандидатов (та же грань или явный переход стена↔пол/потолок по подсветке грани).
+   * Узел трассы — только на грани комнаты: луч к ближайшему попаданию (стена | пол | потолок)
+   * или срез у стены по базовой высоте.
+   *
+   * modeFilter: auto — все варианты; wall/floor/ceiling — только указанная поверхность.
+   * pickContext.lastSurfaceKind — поверхность предыдущего узла (для плавных переходов).
+   * pickContext.hoverFace — подсвеченная грань под курсором (north/south/east/west/floor/ceiling).
+   *
+   * Логика приоритетов (в auto):
+   *   1. Если hoverFace указывает на конкретную грань — выбираем кандидата этой грани.
+   *   2. Иначе ближайший по расстоянию луча.
+   * Это обеспечивает: на краю стены при переходе к полу/потолку приоритет отдаётся
+   * подсвеченной грани, а не «ближайшей по расстоянию» (которая может дёргаться).
    */
   const pickRouteSurfaceAlongRay = useCallback((event, modeFilter = 'auto', pickContext = {}) => {
     if (!rendererRef.current || !cameraRef.current || !selectedRoomBounds || !sceneData.floorPlan) return null;
@@ -1245,116 +1258,111 @@ const FloorPlan3D = () => {
     const candidates = [];
     const floorY = 0.05;
     const ceilY = Math.max(activeRoomHeightM, 0.2) - 0.05;
+    const wallFaces = ['north', 'south', 'east', 'west'];
 
     const clampXZ = (x, z) => ({
       x: Math.min(Math.max(x, selectedRoomBounds.minX + WALL_INSET_M), selectedRoomBounds.maxX - WALL_INSET_M),
       z: Math.min(Math.max(z, selectedRoomBounds.minZ + WALL_INSET_M), selectedRoomBounds.maxZ - WALL_INSET_M),
     });
 
+    /* ── Gather ALL candidates (wall meshes, floor plane, ceiling plane, wall slice) ── */
+
     if (wallHoverMeshesRef.current.length > 0) {
       const hits = raycaster.intersectObjects(wallHoverMeshesRef.current, false);
-      if (hits.length > 0) {
-        const h = hits[0];
+      for (const h of hits) {
         const p = h.point.clone();
-        if (isPointInsideBounds(p, selectedRoomBounds)) {
-          const faceTag = h.object?.userData?.wallFace;
-          const yClamped = Math.min(Math.max(p.y, floorY + 0.02), activeRoomHeightM - 0.02);
-          const c = clampXZ(p.x, p.z);
-          if (faceTag === 'floor' && allow('floor')) {
-            candidates.push({ kind: 'floor', dist: h.distance, point: new THREE.Vector3(c.x, floorY, c.z) });
-          } else if (faceTag === 'ceiling' && allow('ceiling')) {
-            candidates.push({ kind: 'ceiling', dist: h.distance, point: new THREE.Vector3(c.x, ceilY, c.z) });
-          } else if (faceTag && !['floor', 'ceiling'].includes(faceTag) && allow('wall')) {
-            const wallSnapped = getWallSnapPointFromBounds(
-              new THREE.Vector3(p.x, 0, p.z),
-              selectedRoomBounds,
-              yClamped,
-              faceTag,
-            );
-            candidates.push({ kind: 'wall', dist: h.distance, point: wallSnapped });
-          }
+        if (!isPointInsideBounds(p, selectedRoomBounds)) continue;
+        const faceTag = h.object?.userData?.wallFace;
+        const yClamped = Math.min(Math.max(p.y, floorY + 0.02), activeRoomHeightM - 0.02);
+        const c = clampXZ(p.x, p.z);
+        if (faceTag === 'floor') {
+          candidates.push({ kind: 'floor', dist: h.distance, point: new THREE.Vector3(c.x, floorY, c.z), fromMesh: true, meshFace: 'floor' });
+        } else if (faceTag === 'ceiling') {
+          candidates.push({ kind: 'ceiling', dist: h.distance, point: new THREE.Vector3(c.x, ceilY, c.z), fromMesh: true, meshFace: 'ceiling' });
+        } else if (faceTag && wallFaces.includes(faceTag)) {
+          const wallSnapped = getWallSnapPointFromBounds(
+            new THREE.Vector3(p.x, 0, p.z),
+            selectedRoomBounds,
+            yClamped,
+            faceTag,
+          );
+          candidates.push({ kind: 'wall', dist: h.distance, point: wallSnapped, fromMesh: true, meshFace: faceTag });
         }
       }
     }
 
-    if (allow('floor')) {
+    /* Floor plane intersection */
+    {
       const fp = new THREE.Vector3();
       const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
       if (ray.intersectPlane(floorPlane, fp)) {
         const c = clampXZ(fp.x, fp.z);
         const pt = new THREE.Vector3(c.x, floorY, c.z);
         if (isPointInsideBounds(pt, selectedRoomBounds)) {
-          candidates.push({ kind: 'floor', dist: ray.origin.distanceTo(pt), point: pt });
+          candidates.push({ kind: 'floor', dist: ray.origin.distanceTo(pt), point: pt, fromMesh: false });
         }
       }
     }
 
-    if (allow('ceiling')) {
+    /* Ceiling plane intersection */
+    {
       const cp = new THREE.Vector3();
       const ceilPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -ceilY);
       if (ray.intersectPlane(ceilPlane, cp)) {
         const c = clampXZ(cp.x, cp.z);
         const pt = new THREE.Vector3(c.x, ceilY, c.z);
         if (isPointInsideBounds(pt, selectedRoomBounds)) {
-          candidates.push({ kind: 'ceiling', dist: ray.origin.distanceTo(pt), point: pt });
+          candidates.push({ kind: 'ceiling', dist: ray.origin.distanceTo(pt), point: pt, fromMesh: false });
         }
       }
     }
 
-    if (allow('wall')) {
+    /* Wall fallback via horizontal slice at route height */
+    {
       const routeH = Math.max(toMeters(getRouteModeHeight()), 0.05);
       const slice = new THREE.Vector3();
       const slicePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -routeH);
       if (ray.intersectPlane(slicePlane, slice) && isPointInsideBounds(slice, selectedRoomBounds)) {
         const wallSnapped = getWallSnapPointFromBounds(slice, selectedRoomBounds, routeH);
         if (wallSnapped && isPointInsideBounds(wallSnapped, selectedRoomBounds)) {
-          candidates.push({ kind: 'wall', dist: ray.origin.distanceTo(wallSnapped), point: wallSnapped });
+          candidates.push({ kind: 'wall', dist: ray.origin.distanceTo(wallSnapped), point: wallSnapped, fromMesh: false });
         }
       }
     }
 
     if (candidates.length === 0) return null;
 
-    const { lastSurfaceKind = null, hoverFace = null } = pickContext;
-    let pool = candidates;
-    if (modeFilter === 'auto' && lastSurfaceKind && hoverFace) {
-      const wallFaces = ['north', 'south', 'east', 'west'];
-      /* Тот же тип поверхности + наведение на неё — удерживаем трассу на ней (не перехватывает пол по расстоянию). */
-      const wantWall = lastSurfaceKind === 'wall' && wallFaces.includes(hoverFace);
-      const wantFloor = lastSurfaceKind === 'floor' && hoverFace === 'floor';
-      const wantCeil = lastSurfaceKind === 'ceiling' && hoverFace === 'ceiling';
-      /* Переход на другую грань по наведению (стена→пол/потолок и обратно), иначе горизонтальный срез стены «перебивает» пол. */
-      const toFloorFromWall = lastSurfaceKind === 'wall' && hoverFace === 'floor';
-      const toCeilFromWall = lastSurfaceKind === 'wall' && hoverFace === 'ceiling';
-      const toWallFromFloor = lastSurfaceKind === 'floor' && wallFaces.includes(hoverFace);
-      const toWallFromCeil = lastSurfaceKind === 'ceiling' && wallFaces.includes(hoverFace);
-      const toFloorFromCeil = lastSurfaceKind === 'ceiling' && hoverFace === 'floor';
-      const toCeilFromFloor = lastSurfaceKind === 'floor' && hoverFace === 'ceiling';
+    /* ── Filter by modeFilter ────────────────────────────────────── */
+    const allowed = candidates.filter((c) => allow(c.kind));
+    if (allowed.length === 0) return null;
 
-      if (wantWall) {
-        const ws = candidates.filter((c) => c.kind === 'wall');
-        if (ws.length) pool = ws;
-      } else if (wantFloor) {
-        const fs = candidates.filter((c) => c.kind === 'floor');
-        if (fs.length) pool = fs;
-      } else if (wantCeil) {
-        const cs = candidates.filter((c) => c.kind === 'ceiling');
-        if (cs.length) pool = cs;
-      } else if (toFloorFromWall || toFloorFromCeil) {
-        const fs = candidates.filter((c) => c.kind === 'floor');
-        if (fs.length) pool = fs;
-      } else if (toCeilFromWall || toCeilFromFloor) {
-        const cs = candidates.filter((c) => c.kind === 'ceiling');
-        if (cs.length) pool = cs;
-      } else if (toWallFromFloor || toWallFromCeil) {
-        const ws = candidates.filter((c) => c.kind === 'wall');
-        if (ws.length) pool = ws;
+    /* ── In auto mode, use hoverFace to pick the right surface ───── */
+    const { hoverFace = null } = pickContext;
+
+    if (modeFilter === 'auto' && hoverFace) {
+      const hoverKind = hoverFace === 'floor' ? 'floor'
+        : hoverFace === 'ceiling' ? 'ceiling'
+          : wallFaces.includes(hoverFace) ? 'wall' : null;
+
+      if (hoverKind) {
+        const hoverMatches = allowed.filter((c) => c.kind === hoverKind);
+        if (hoverMatches.length > 0) {
+          /* Among candidates matching the hovered surface, prefer mesh hits, then closest */
+          hoverMatches.sort((a, b) => {
+            if (a.fromMesh !== b.fromMesh) return a.fromMesh ? -1 : 1;
+            return a.dist - b.dist;
+          });
+          return { kind: hoverMatches[0].kind, point: hoverMatches[0].point };
+        }
       }
     }
 
-    pool.sort((a, b) => a.dist - b.dist);
-    const best = pool[0];
-    return { kind: best.kind, point: best.point };
+    /* ── Fallback: closest allowed candidate, prefer mesh hits ──── */
+    allowed.sort((a, b) => {
+      if (a.fromMesh !== b.fromMesh) return a.fromMesh ? -1 : 1;
+      return a.dist - b.dist;
+    });
+    return { kind: allowed[0].kind, point: allowed[0].point };
   }, [
     activeRoomHeightM,
     getRouteModeHeight,
@@ -1751,14 +1759,38 @@ const FloorPlan3D = () => {
       const lastForPick = routeNodesRef.current.length
         ? routeNodesRef.current[routeNodesRef.current.length - 1]
         : null;
+      const hoverFace = getRoutePointerHoverFace(event);
       const picked = pickRouteSurfaceAlongRay(event, mode, {
         lastSurfaceKind: lastForPick?.surfaceKind ?? null,
-        hoverFace: getRoutePointerHoverFace(event),
+        hoverFace,
       });
+
+      /* Surface restriction check — show toast when placement mode blocks the target surface */
       if (!picked) {
-        addToast('Наведите курсор на стену, пол или потолок комнаты (узел не в пустоте).', 'warn');
+        if (mode !== 'auto') {
+          const modeLabels = { wall: 'Стены', floor: 'Пол', ceiling: 'Потолок' };
+          const faceLabels = { floor: 'пол', ceiling: 'потолок', north: 'стену', south: 'стену', east: 'стену', west: 'стену' };
+          const modeLabel = modeLabels[mode] || mode;
+          const hoverLabel = faceLabels[hoverFace] || 'эту поверхность';
+          addToast(
+            `Режим прокладки «${modeLabel}» не позволяет разместить узел на ${hoverLabel}. Переключите режим прокладки на «Авто» или выберите соответствующий режим.`,
+            'warn',
+          );
+        } else {
+          addToast('Наведите курсор на стену, пол или потолок комнаты (узел не в пустоте).', 'warn');
+        }
         return;
       }
+
+      /* Inform user when auto-mode transitions between surfaces */
+      if (mode !== 'auto' && lastForPick?.surfaceKind && picked.kind !== lastForPick.surfaceKind) {
+        const surfLabels = { wall: 'стене', floor: 'полу', ceiling: 'потолку' };
+        addToast(
+          `Переход с ${surfLabels[lastForPick.surfaceKind] || 'поверхности'} к ${surfLabels[picked.kind] || 'поверхности'} ограничен режимом «${mode === 'wall' ? 'Только стена' : mode === 'floor' ? 'Только пол' : 'Только потолок'}». Используйте «Авто» для свободной прокладки.`,
+          'warn',
+        );
+      }
+
       const pickKind = picked.kind;
       let surfaceKind = picked.kind;
       const routeHeightM = Math.max(toMeters(getRouteModeHeight()), 0.05);
@@ -2259,9 +2291,10 @@ const FloorPlan3D = () => {
           const lastForGhost = routeNodesRef.current.length
             ? routeNodesRef.current[routeNodesRef.current.length - 1]
             : null;
+          const hoverFace = getRoutePointerHoverFace(event);
           const picked = pickRouteSurfaceAlongRay(event, mode, {
             lastSurfaceKind: lastForGhost?.surfaceKind ?? null,
-            hoverFace: getRoutePointerHoverFace(event),
+            hoverFace,
           });
           if (!picked || !isPointInsideBounds(picked.point, selectedRoomBounds)) {
             clearGhostPreview();
@@ -2279,6 +2312,13 @@ const FloorPlan3D = () => {
             } else {
               clearGhostPreview();
               const g = ghostGroupRef.current;
+              /* Determine if there is a surface transition for coloring */
+              const fromKind = lastForGhost?.surfaceKind ?? null;
+              const toKind = picked.kind;
+              const isTransition = fromKind && toKind && fromKind !== toKind;
+              const ghostColor = isTransition ? 0x60a5fa : 0xfacc15; /* blue for transitions, yellow for same */
+              const snapColor = snappedPointResult.pointId ? 0x34d399 : ghostColor; /* green when snapped to equipment */
+
               if (g && routePointsRef.current.length > 0) {
                 const prev = routePointsRef.current[routePointsRef.current.length - 1];
                 const ghostChain = expandSurfaceRouteSegment(
@@ -2295,7 +2335,7 @@ const FloorPlan3D = () => {
                 );
                 const geom = new THREE.BufferGeometry().setFromPoints(ghostChain);
                 const mat = new THREE.LineDashedMaterial({
-                  color: 0xfacc15,
+                  color: ghostColor,
                   dashSize: 0.12,
                   gapSize: 0.08,
                   transparent: true,
@@ -2307,9 +2347,22 @@ const FloorPlan3D = () => {
                 line.computeLineDistances();
                 line.renderOrder = 15;
                 g.add(line);
+                /* Intermediate corner spheres for multi-segment ghost */
+                if (ghostChain.length > 2) {
+                  for (let gi = 1; gi < ghostChain.length - 1; gi += 1) {
+                    const cornerSphere = new THREE.Mesh(
+                      new THREE.SphereGeometry(0.02, 8, 8),
+                      new THREE.MeshBasicMaterial({ color: ghostColor, transparent: true, opacity: 0.6, depthWrite: false, depthTest: false }),
+                    );
+                    cornerSphere.renderOrder = 15;
+                    cornerSphere.position.copy(ghostChain[gi]);
+                    g.add(cornerSphere);
+                  }
+                }
+                /* Endpoint sphere */
                 const sphere = new THREE.Mesh(
                   new THREE.SphereGeometry(0.035, 10, 10),
-                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false })
+                  new THREE.MeshBasicMaterial({ color: snapColor, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false })
                 );
                 sphere.renderOrder = 15;
                 sphere.position.copy(snapped);
@@ -2317,7 +2370,7 @@ const FloorPlan3D = () => {
               } else if (g) {
                 const sphere = new THREE.Mesh(
                   new THREE.SphereGeometry(0.04, 12, 12),
-                  new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.75, depthWrite: false, depthTest: false })
+                  new THREE.MeshBasicMaterial({ color: snapColor, transparent: true, opacity: 0.75, depthWrite: false, depthTest: false })
                 );
                 sphere.renderOrder = 15;
                 sphere.position.copy(snapped);
@@ -2563,6 +2616,14 @@ const FloorPlan3D = () => {
       setRouteHeight((prev) => (prev >= 10 && prev <= 230 ? prev : 120));
     }
   }, [routePlacementMode]);
+
+  /* One-way sync: surfaceMode → routePlacementMode when in draw-route mode.
+     Reverse sync is intentionally omitted to prevent oscillation cycles. */
+  useEffect(() => {
+    if (tool !== 'draw-route') return;
+    const surfToRoute = { wall: 'wall', floor: 'floor', ceiling: 'ceiling', any: 'auto' };
+    setRoutePlacementMode(surfToRoute[surfaceMode] || 'auto');
+  }, [surfaceMode, tool]);
 
   useEffect(() => {
     const onKeyDown = (event) => {

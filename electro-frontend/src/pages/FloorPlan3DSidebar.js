@@ -407,6 +407,11 @@ export default function FloorPlan3DSidebar({
               <option value="floor">Только пол</option>
             </select>
           </div>
+          {tool === 'draw-route' && (
+            <div className="floor-plan-3d-tip">
+              В режиме трассы «Рабочая поверхность» и «Режим прокладки» синхронизируются автоматически. Режим «Авто» позволяет переходы между стенами, полом и потолком. Другие режимы ограничивают трассу одной поверхностью.
+            </div>
+          )}
           <div className="editor-field">
             <label htmlFor="routeCircuit">Электрическая цепь</label>
             <select
