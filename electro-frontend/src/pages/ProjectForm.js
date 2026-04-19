@@ -30,16 +30,24 @@ const ProjectForm = () => {
   const loadProject = async () => {
     try {
       const response = await projectAPI.getById(id);
+      const data = response.data;
+
+      // Диагностика: логируем полученные данные
+      console.log('Загруженные данные проекта:', data);
+
+      // Пытаемся получить площадь из разных возможных полей
+      const totalAreaValue = data.totalArea || data.total_area || data.area || '';
+
       setFormData({
-        name: response.data.name || '',
-        description: response.data.description || '',
-        groundingSystem: response.data.groundingSystem || '',
-        inputVoltage: response.data.inputVoltage || 230,
-        inputPhaseCount: response.data.inputPhaseCount || 1,
-        penConductorSection: response.data.penConductorSection || null,
-        totalArea: response.data.totalArea || '',
+        name: data.name || '',
+        description: data.description || '',
+        groundingSystem: data.groundingSystem || data.grounding_system || '',
+        inputVoltage: data.inputVoltage || data.input_voltage || 230,
+        inputPhaseCount: data.inputPhaseCount || data.input_phase_count || 1,
+        penConductorSection: data.penConductorSection || data.pen_conductor_section || null,
+        totalArea: totalAreaValue,
       });
-      
+
       // Загружаем комнаты расчёта для валидации
       try {
         const roomsResponse = await roomAPI.getByProject(id);
@@ -49,6 +57,7 @@ const ProjectForm = () => {
         setRooms([]);
       }
     } catch (err) {
+      console.error('Ошибка загрузки расчёта:', err);
       setError('Ошибка загрузки расчёта');
     }
   };
@@ -68,13 +77,13 @@ const ProjectForm = () => {
 
     // Валидация площади
     const area = parseFloat(formData.totalArea);
-    
+
     if (!formData.totalArea || isNaN(area) || area <= 0) {
       setValidationErrors({ totalArea: 'Укажите площадь объекта' });
       setLoading(false);
       return;
     }
-    
+
     // При создании расчёта: валидация как в калькуляторе
     if (!id) {
       if (area < 20) {
@@ -82,7 +91,7 @@ const ProjectForm = () => {
         setLoading(false);
         return;
       }
-      
+
       if (area > 1000) {
         setValidationErrors({ totalArea: 'Площадь объекта не должна превышать 1000 м². Для больших объектов обратитесь к специалисту' });
         setLoading(false);
@@ -93,7 +102,7 @@ const ProjectForm = () => {
       const totalRoomsArea = rooms.reduce((sum, room) => {
         return sum + (parseFloat(room.area) || 0);
       }, 0);
-      
+
       if (area < totalRoomsArea) {
         setValidationErrors({
           totalArea: `Общая площадь расчёта (${area.toFixed(2)} м²) не может быть меньше суммы площадей всех помещений (${totalRoomsArea.toFixed(2)} м²). Увеличьте общую площадь или уменьшите площади помещений.`
@@ -120,23 +129,31 @@ const ProjectForm = () => {
     }
 
     try {
+      // Числовые поля нужно передавать как числа, иначе Jackson может не десериализовать строку в BigDecimal/Integer
+      const payload = {
+        ...formData,
+        totalArea: parseFloat(formData.totalArea) || null,
+        inputVoltage: parseInt(formData.inputVoltage, 10) || null,
+        inputPhaseCount: parseInt(formData.inputPhaseCount, 10) || null,
+        penConductorSection: formData.penConductorSection ? parseFloat(formData.penConductorSection) : null,
+      };
       if (id) {
-        await projectAPI.update(id, formData);
+        await projectAPI.update(id, payload);
         navigate(`/projects/${id}`);
       } else {
-        const response = await projectAPI.create(formData);
+        const response = await projectAPI.create(payload);
         navigate(`/projects/${response.data.id}`);
       }
     } catch (err) {
       // Если это 401, перехватчик в api.js уже делает редирект, не нужно показывать ошибку
       if (err.response && err.response.status === 401) {
-        return; 
+        return;
       }
       setError(err.response?.data?.message || 'Ошибка сохранения расчёта');
     } finally {
       // Если компонент размонтировался (из-за редиректа), это предотвратит ошибку обновления стейта
       if (window.location.pathname.includes('/projects')) {
-          setLoading(false);
+        setLoading(false);
       }
     }
   };

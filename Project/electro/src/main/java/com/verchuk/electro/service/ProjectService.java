@@ -237,7 +237,10 @@ public class ProjectService {
                 .inputVoltage(project.getInputVoltage())
                 .inputPhaseCount(project.getInputPhaseCount())
                 .penConductorSection(project.getPenConductorSection())
-                .totalArea(project.getTotalArea())
+                .totalArea(project.getTotalArea() != null ? project.getTotalArea() :
+                        (project.getRooms() != null ? project.getRooms().stream()
+                                .map(r -> r.getArea() != null ? r.getArea() : java.math.BigDecimal.ZERO)
+                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add) : null))
                 .createdAt(project.getCreatedAt())
                 .updatedAt(project.getUpdatedAt())
                 .build();
