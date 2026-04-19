@@ -65,6 +65,21 @@ public class Room {
     @Column(name = "socket_groups_config", length = 2000)
     private String socketGroupsConfig; // JSON массив групп: [{"socketsCount": 2}, {"socketsCount": 3}, ...]
 
+    @Column(name = "max_outlets")
+    private Integer maxOutlets;
+
+    @Column(name = "max_switches")
+    private Integer maxSwitches;
+
+    @Column(name = "max_doors")
+    private Integer maxDoors;
+
+    @Column(name = "max_windows")
+    private Integer maxWindows;
+
+    @Column(name = "max_lights")
+    private Integer maxLights;
+
     @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ElectricalPoint> electricalPoints;
 }

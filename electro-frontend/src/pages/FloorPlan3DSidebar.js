@@ -69,8 +69,10 @@ export default function FloorPlan3DSidebar({
   validationStages,
   roomExistingStats,
   selectedRoomCalculation,
-  roomPlan,
-  setRoomPlanData,
+  roomLimitsEdit,
+  setRoomLimitsEdit,
+  saveRoomLimits,
+  savingRoomLimits,
   getRouteModeWarning,
   undoLastAction,
   redoLastAction,
@@ -78,6 +80,8 @@ export default function FloorPlan3DSidebar({
   canRedo,
   loadRouteToDraft,
   selectedRouteId,
+  outletSocketCount,
+  setOutletSocketCount,
 }) {
   return (
     <aside className="floor-plan-3d-panel">
@@ -260,6 +264,56 @@ export default function FloorPlan3DSidebar({
             <button className={tool === 'add-outlet' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-outlet')}>
               Розетка
             </button>
+            {tool === 'add-outlet' && (() => {
+              // Parse config groups to know which sizes are available and how many are placed
+              let configGroups = [];
+              if (selectedRoom?.socketGroupsConfig) {
+                try { configGroups = JSON.parse(selectedRoom.socketGroupsConfig); } catch (e) { }
+              }
+              // Count allowed per size from config
+              const allowedBySize = configGroups.reduce((acc, g) => {
+                const n = Number(g.socketsCount) || 1;
+                acc[n] = (acc[n] || 0) + 1;
+                return acc;
+              }, {});
+              const configSizes = Object.keys(allowedBySize).map(Number).sort();
+              // Which sizes to show: if config exists — only those sizes; otherwise 1–4
+              const sizesToShow = configSizes.length > 0 ? configSizes : [1, 2, 3, 4];
+              return (
+                <div className="editor-field">
+                  <label>В группе</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {sizesToShow.map((n) => {
+                      const allowed = allowedBySize[n] || 0;
+                      const placed = roomExistingStats?.outletsBySize?.[n] || 0;
+                      const full = configSizes.length > 0 && placed >= allowed;
+                      const isSelected = outletSocketCount === n;
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setOutletSocketCount(n)}
+                          title={configSizes.length > 0 ? `${placed}/${allowed} размещено` : undefined}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.95rem',
+                            fontWeight: isSelected ? 700 : 400,
+                            background: isSelected ? (full ? '#dc2626' : '#16a34a') : (full ? '#fee2e2' : '#0b1120'),
+                            color: isSelected ? '#fff' : (full ? '#b91c1c' : '#e2e8f0'),
+                            border: `1px solid ${full ? '#fca5a5' : isSelected ? '#16a34a' : '#334155'}`,
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            textDecoration: full ? 'line-through' : 'none',
+                          }}
+                        >
+                          {n}{configSizes.length > 0 ? ` (${placed}/${allowed})` : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <button className={tool === 'add-switch' ? 'tool-btn active' : 'tool-btn'} onClick={() => setTool('add-switch')}>
               Выключатель
             </button>
@@ -506,15 +560,37 @@ export default function FloorPlan3DSidebar({
           </ul>
           <div className="floor-plan-3d-tip">{readinessText}</div>
           <div className="floor-plan-3d-tip">
-            <strong>Ступенчатая валидация ТКП:</strong>
-            <div>Шаг 1 (геометрия): {validationStages.stage1Errors.length ? `ошибки: ${validationStages.stage1Errors.join('; ')}` : 'OK'}</div>
-            <div>Шаг 2 (электробезопасность): {validationStages.stage2Errors.length ? `ошибки: ${validationStages.stage2Errors.join('; ')}` : 'OK'}</div>
-            <div>Шаг 3 (уточнение): {validationStages.stage3Warnings.length ? validationStages.stage3Warnings.join('; ') : 'OK'}</div>
+            <strong>Валидация ТКП 339:</strong>
+            <div style={{ marginTop: '4px' }}>
+              <span style={{ color: validationStages.stage1Errors.length ? '#f87171' : '#4ade80', fontWeight: 600 }}>
+                {validationStages.stage1Errors.length ? '✗' : '✓'} Геометрия:
+              </span>
+              {validationStages.stage1Errors.length
+                ? validationStages.stage1Errors.map((e, i) => <div key={i} style={{ color: '#fca5a5', paddingLeft: '12px' }}>— {e}</div>)
+                : <span style={{ color: '#86efac' }}> OK</span>}
+            </div>
+            <div style={{ marginTop: '4px' }}>
+              <span style={{ color: validationStages.stage2Errors.length ? '#f87171' : '#4ade80', fontWeight: 600 }}>
+                {validationStages.stage2Errors.length ? '✗' : '✓'} Электробезопасность:
+              </span>
+              {validationStages.stage2Errors.length
+                ? validationStages.stage2Errors.map((e, i) => <div key={i} style={{ color: '#fca5a5', paddingLeft: '12px' }}>— {e}</div>)
+                : <span style={{ color: '#86efac' }}> OK</span>}
+            </div>
+            <div style={{ marginTop: '4px' }}>
+              <span style={{ color: validationStages.stage3Warnings.length ? '#fbbf24' : '#4ade80', fontWeight: 600 }}>
+                {validationStages.stage3Warnings.length ? '⚠' : '✓'} Рекомендации:
+              </span>
+              {validationStages.stage3Warnings.length
+                ? validationStages.stage3Warnings.map((w, i) => <div key={i} style={{ color: '#fde68a', paddingLeft: '12px' }}>— {w}</div>)
+                : <span style={{ color: '#86efac' }}> нет замечаний</span>}
+            </div>
           </div>
           {selectedRoom && (
             <div className="floor-plan-3d-tip">
               <strong>{selectedRoom.name} — текущее состояние:</strong>
-              <div>Точек: {roomExistingStats.points} (розетки {roomExistingStats.outlets}, выключатели {roomExistingStats.switches}, свет {roomExistingStats.lights})</div>
+              <div>Точек: {roomExistingStats.points} (розетки {roomExistingStats.outlets} гр. / {roomExistingStats.totalOutletSockets ?? 0} шт., выключатели {roomExistingStats.switches}, свет {roomExistingStats.lights})</div>
+              <div>Двери: {roomExistingStats.doors}, Окна: {roomExistingStats.windows}</div>
               <div>Приборов в комнате: {roomExistingStats.appliances}</div>
               {selectedRoomCalculation && (
                 <div>
@@ -525,59 +601,81 @@ export default function FloorPlan3DSidebar({
           )}
           {selectedRoom && (
             <div className="room-plan-panel">
-              <h3>План размещения (что хотим добавить)</h3>
-              <div className="editor-field">
-                <label>План: розетки, шт</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={roomPlan.plannedOutlets}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedOutlets: Number(e.target.value || 0) },
-                  }))}
-                />
-              </div>
-              <div className="editor-field">
-                <label>План: выключатели, шт</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={roomPlan.plannedSwitches}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedSwitches: Number(e.target.value || 0) },
-                  }))}
-                />
-              </div>
-              <div className="editor-field">
-                <label>План: световые точки, шт</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={roomPlan.plannedLights}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, plannedLights: Number(e.target.value || 0) },
-                  }))}
-                />
-              </div>
-              <div className="editor-field">
-                <label>Резерв кабеля, м</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={roomPlan.cableReserveM}
-                  onChange={(e) => setRoomPlanData((prev) => ({
-                    ...prev,
-                    [selectedRoomId]: { ...roomPlan, cableReserveM: Number(e.target.value || 0) },
-                  }))}
-                />
-              </div>
+              <h3>Лимиты комнаты</h3>
               <div className="floor-plan-3d-tip">
-                План по комнате: +{roomPlan.plannedOutlets + roomPlan.plannedSwitches + roomPlan.plannedLights} точек,
-                доп. кабель {Number(roomPlan.cableReserveM || 0).toFixed(1)} м.
+                Установите максимально допустимое количество объектов. Оставьте поле пустым, чтобы не ограничивать.
+              </div>
+              {(() => {
+                if (!selectedRoom?.socketGroupsConfig) return null;
+                let groups = [];
+                try { groups = JSON.parse(selectedRoom.socketGroupsConfig); } catch (e) { return null; }
+                if (!groups.length) return null;
+                // Count allowed per size
+                const allowedBySize = groups.reduce((acc, g) => {
+                  const n = Number(g.socketsCount) || 1;
+                  acc[n] = (acc[n] || 0) + 1;
+                  return acc;
+                }, {});
+                return (
+                  <div className="floor-plan-3d-tip" style={{ marginBottom: '6px' }}>
+                    <strong>Розеточные группы (из калькулятора):</strong>
+                    {Object.entries(allowedBySize).sort(([a], [b]) => a - b).map(([size, count]) => {
+                      const placed = roomExistingStats?.outletsBySize?.[Number(size)] || 0;
+                      const full = placed >= count;
+                      return (
+                        <div key={size} style={{ color: full ? '#16a34a' : undefined }}>
+                          {count}× по {size} розетки — {placed}/{count} размещено {full ? '✓' : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              <div className="editor-field">
+                <label>Макс. выключателей, шт</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={roomLimitsEdit.maxSwitches ?? ''}
+                  onChange={(e) => setRoomLimitsEdit({ maxSwitches: e.target.value === '' ? null : Number(e.target.value) })}
+                  placeholder="Без ограничений"
+                />
+              </div>
+              <div className="editor-field">
+                <label>Макс. дверей, шт</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={roomLimitsEdit.maxDoors ?? ''}
+                  onChange={(e) => setRoomLimitsEdit({ maxDoors: e.target.value === '' ? null : Number(e.target.value) })}
+                  placeholder="Без ограничений"
+                />
+              </div>
+              <div className="editor-field">
+                <label>Макс. окон, шт</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={roomLimitsEdit.maxWindows ?? ''}
+                  onChange={(e) => setRoomLimitsEdit({ maxWindows: e.target.value === '' ? null : Number(e.target.value) })}
+                  placeholder="Без ограничений"
+                />
+              </div>
+              <div className="editor-field">
+                <label>Макс. световых точек, шт</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={roomLimitsEdit.maxLights ?? ''}
+                  onChange={(e) => setRoomLimitsEdit({ maxLights: e.target.value === '' ? null : Number(e.target.value) })}
+                  placeholder="Без ограничений"
+                />
+              </div>
+              <button type="button" className="btn-primary" onClick={saveRoomLimits} disabled={savingRoomLimits}>
+                {savingRoomLimits ? 'Сохранение...' : 'Сохранить лимиты'}
+              </button>
+              <div className="floor-plan-3d-tip" style={{ marginTop: '8px' }}>
+                Текущее: розетки {roomExistingStats.outlets} гр. / {roomExistingStats.totalOutletSockets ?? 0} шт., выключатели {roomExistingStats.switches}, двери {roomExistingStats.doors}, окна {roomExistingStats.windows}, свет {roomExistingStats.lights}
               </div>
             </div>
           )}

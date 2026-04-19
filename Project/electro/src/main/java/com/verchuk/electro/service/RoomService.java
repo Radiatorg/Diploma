@@ -93,6 +93,11 @@ public class RoomService {
                 .socketGroups(request.getSocketGroups() != null ? request.getSocketGroups() : 1)
                 .socketsPerGroup(request.getSocketsPerGroup() != null ? request.getSocketsPerGroup() : 2)
                 .socketGroupsConfig(request.getSocketGroupsConfig())
+                .maxOutlets(request.getMaxOutlets())
+                .maxSwitches(request.getMaxSwitches())
+                .maxDoors(request.getMaxDoors())
+                .maxWindows(request.getMaxWindows())
+                .maxLights(request.getMaxLights())
                 .build();
 
         return mapToRoomResponse(roomRepository.save(room));
@@ -143,6 +148,12 @@ public class RoomService {
             room.setRoomType(roomType);
         }
 
+        room.setMaxOutlets(request.getMaxOutlets());
+        room.setMaxSwitches(request.getMaxSwitches());
+        room.setMaxDoors(request.getMaxDoors());
+        room.setMaxWindows(request.getMaxWindows());
+        room.setMaxLights(request.getMaxLights());
+
         return mapToRoomResponse(roomRepository.save(room));
     }
 
@@ -189,6 +200,11 @@ public class RoomService {
                 .socketGroups(room.getSocketGroups())
                 .socketsPerGroup(room.getSocketsPerGroup())
                 .socketGroupsConfig(room.getSocketGroupsConfig())
+                .maxOutlets(room.getMaxOutlets())
+                .maxSwitches(room.getMaxSwitches())
+                .maxDoors(room.getMaxDoors())
+                .maxWindows(room.getMaxWindows())
+                .maxLights(room.getMaxLights())
                 .build();
     }
 }

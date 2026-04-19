@@ -181,6 +181,8 @@ export function useRouteDraft({
         sum += routePointsRef.current[i - 1].distanceTo(routePointsRef.current[i]);
       }
       setRouteDraftLength(Number(sum.toFixed(2)));
+    } else {
+      setRouteDraftLength(0);
     }
 
     routePointsRef.current.forEach((p, idx) => {

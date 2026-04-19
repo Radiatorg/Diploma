@@ -23,6 +23,7 @@ import {
   buildDoorGroup,
   buildWindowGroup,
   isSourcePointByNotes,
+  parseSocketsCountFromNotes,
 } from './floorPlan3D/builders3D';
 import {
   ROUTE_EQUIPMENT_PLANAR_SNAP_RADIUS_M,
@@ -70,6 +71,7 @@ const FloorPlan3D = () => {
   });
   const [tool, setTool] = useState('navigate');
   const [pointHeight, setPointHeight] = useState(30);
+  const [outletSocketCount, setOutletSocketCount] = useState(1);
   const [circuits, setCircuits] = useState([]);
   const [selectedCircuitId, setSelectedCircuitId] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -79,7 +81,8 @@ const FloorPlan3D = () => {
   const [parallelOffsetCm, setParallelOffsetCm] = useState(0);
   const [projectAppliances, setProjectAppliances] = useState([]);
   const [calculationReport, setCalculationReport] = useState(null);
-  const [roomPlanData, setRoomPlanData] = useState({});
+  const [roomLimitsEdit, setRoomLimitsEdit] = useState({});
+  const [savingRoomLimits, setSavingRoomLimits] = useState(false);
   const [saved3DCalculations, setSaved3DCalculations] = useState([]);
   const [selectedSavedCalcId, setSelectedSavedCalcId] = useState(null);
   const [selectedSavedCalcDetails, setSelectedSavedCalcDetails] = useState(null);
@@ -211,11 +214,11 @@ const FloorPlan3D = () => {
     }
   }, []);
 
-  const updateGhostPreview = useCallback((toolType, position, bounds, roomHeightM) => {
+  const updateGhostPreview = useCallback((toolType, position, bounds, roomHeightM, socketsCount = 1) => {
     clearGhostPreview();
     const g = ghostGroupRef.current;
     if (!g || !position) return;
-    const ghost = buildGhostGroup(toolType);
+    const ghost = buildGhostGroup(toolType, socketsCount);
     if (bounds && roomHeightM != null) {
       const ghostSymbolType =
         toolType === 'add-outlet' ? 'outlet'
@@ -1498,6 +1501,17 @@ const FloorPlan3D = () => {
       const widthCm = tool === 'add-door' ? doorWidthCm : windowWidthCm;
       const heightCm = tool === 'add-door' ? 200 : 120;
 
+      // Limit check for doors/windows
+      const roomLimData = sceneData.rooms.find((r) => r.id === selectedRoomId);
+      if (tool === 'add-door' && roomLimData?.maxDoors != null && roomExistingStats.doors >= roomLimData.maxDoors) {
+        addToast(`Лимит дверей для этой комнаты — ${roomLimData.maxDoors} шт. Увеличьте лимит или удалите лишние двери.`, 'error');
+        return;
+      }
+      if (tool === 'add-window' && roomLimData?.maxWindows != null && roomExistingStats.windows >= roomLimData.maxWindows) {
+        addToast(`Лимит окон для этой комнаты — ${roomLimData.maxWindows} шт. Увеличьте лимит или удалите лишние окна.`, 'error');
+        return;
+      }
+
       let matchingWall = findWallForFace(clickFace, selectedRoomBounds);
 
       // If no DB wall found, try to auto-create it from room geometry
@@ -1654,6 +1668,12 @@ const FloorPlan3D = () => {
       }
 
       if (tool === 'add-switch') {
+        // Limit check
+        const limRoomSw = sceneData.rooms.find((r) => r.id === selectedRoomId);
+        if (limRoomSw?.maxSwitches != null && roomExistingStats.switches >= limRoomSw.maxSwitches) {
+          addToast(`Лимит выключателей для этой комнаты — ${limRoomSw.maxSwitches} шт. Увеличьте лимит или удалите лишние выключатели.`, 'error');
+          return;
+        }
         const switchHeightCm = effectiveSurface === 'wall'
           ? getWallSnapPreferredHeightCm(basePoint)
           : Math.round(toCentimeters(Math.min(Math.max(basePoint.y, 0.05), activeRoomHeightM - 0.02)));
@@ -1672,6 +1692,40 @@ const FloorPlan3D = () => {
       }
 
       if (tool === 'add-outlet') {
+        // Per-group limit check: config defines specific groups (e.g. [{socketsCount:2},{socketsCount:3}])
+        // Each group size can only be placed as many times as it appears in the config
+        const limRoomOut = sceneData.rooms.find((r) => r.id === selectedRoomId);
+        if (limRoomOut?.socketGroupsConfig) {
+          try {
+            const groups = JSON.parse(limRoomOut.socketGroupsConfig);
+            if (groups.length > 0) {
+              // Count how many groups of the chosen size are defined
+              const allowedForSize = groups.filter((g) => Number(g.socketsCount) === outletSocketCount).length;
+              if (allowedForSize === 0) {
+                const available = [...new Set(groups.map((g) => g.socketsCount))].sort().join(', ');
+                addToast(
+                  `Группа из ${outletSocketCount} розеток не предусмотрена для этой комнаты. Доступные размеры: ${available}.`,
+                  'error',
+                );
+                return;
+              }
+              // Count how many of that size are already placed
+              const outletPts = sceneData.points.filter(
+                (p) => String(p.roomId) === String(selectedRoomId) && p?.electricalSymbol?.type === 'outlet',
+              );
+              const placedForSize = outletPts.filter(
+                (p) => parseSocketsCountFromNotes(p.notes) === outletSocketCount,
+              ).length;
+              if (placedForSize >= allowedForSize) {
+                addToast(
+                  `Все ${allowedForSize} ${allowedForSize === 1 ? 'группа' : 'группы'} из ${outletSocketCount} розеток уже размещены. Измените группы в калькуляторе.`,
+                  'error',
+                );
+                return;
+              }
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
         if (isWetRoom(selectedRoomId)) {
           if (!selectedCircuit || !selectedCircuit.rcdRatingMa || Number(selectedCircuit.rcdRatingMa) > 30) {
             addToast('ТКП 8.5.6/8.7.4: розетка в мокрой зоне — выберите цепь с УЗО ≤ 30 мА.', 'warn');
@@ -1681,6 +1735,12 @@ const FloorPlan3D = () => {
       }
 
       if (tool === 'add-light') {
+        // Limit check
+        const limRoomLt = sceneData.rooms.find((r) => r.id === selectedRoomId);
+        if (limRoomLt?.maxLights != null && roomExistingStats.lights >= limRoomLt.maxLights) {
+          addToast(`Лимит световых точек для этой комнаты — ${limRoomLt.maxLights} шт. Увеличьте лимит или удалите лишние световые точки.`, 'error');
+          return;
+        }
         // ТКП 8.7.4: в мокрых помещениях (зона 2) — только светильники класса защиты 2
         if (isWetRoom(selectedRoomId)) {
           addToast('ТКП 8.7.4: в мокрых помещениях допускаются только светильники класса защиты IP44 / класса II.', 'warn');
@@ -1725,7 +1785,11 @@ const FloorPlan3D = () => {
           ...(selectedRoomId ? { roomId: selectedRoomId } : {}),
           ...(selectedCircuitId ? { circuitId: Number(selectedCircuitId) } : {}),
           installationScope: 'PLANNED',
-          notes: tool === 'add-source' ? 'Стартовая точка линии (3D)' : 'Создано в 3D-редакторе',
+          notes: tool === 'add-source'
+            ? 'Стартовая точка линии (3D)'
+            : tool === 'add-outlet'
+              ? `sockets:${outletSocketCount} Создано в 3D-редакторе`
+              : 'Создано в 3D-редакторе',
         };
         const created = await electricalPointAPI.create(projectId, payload);
         const createdPointId = created?.data?.id;
@@ -2184,7 +2248,7 @@ const FloorPlan3D = () => {
             ghostSurface === 'wall' ? getWallSnapPreferredHeightCm(snapBase) : pointHeight;
           const snappedPos = snapPointToSurface(snapBase, ghostPreferredHeight, ghostSurface);
           if (snappedPos && isPointInsideBounds(snappedPos, selectedRoomBounds)) {
-            updateGhostPreview(tool, snappedPos, selectedRoomBounds, activeRoomHeightM);
+            updateGhostPreview(tool, snappedPos, selectedRoomBounds, activeRoomHeightM, tool === 'add-outlet' ? outletSocketCount : 1);
           } else {
             clearGhostPreview();
           }
@@ -2703,18 +2767,31 @@ const FloorPlan3D = () => {
   };
 
   const roomExistingStats = useMemo(() => {
-    if (!selectedRoomId) return { points: 0, outlets: 0, switches: 0, lights: 0, appliances: 0 };
+    if (!selectedRoomId) return { points: 0, outlets: 0, totalOutletSockets: 0, switches: 0, lights: 0, appliances: 0, doors: 0, windows: 0 };
     const roomPoints = sceneData.points.filter((point) => point.roomId === selectedRoomId);
+    const roomWalls = sceneData.walls.filter((w) => String(w.roomId) === String(selectedRoomId));
+    const allOpenings = roomWalls.flatMap((w) => w.openings || []);
+    const outletPoints = roomPoints.filter((p) => p?.electricalSymbol?.type === 'outlet');
+    // Build per-size count map: { 1: 0, 2: 1, 3: 0, 4: 0 }
+    const outletsBySize = outletPoints.reduce((acc, p) => {
+      const n = parseSocketsCountFromNotes(p.notes);
+      acc[n] = (acc[n] || 0) + 1;
+      return acc;
+    }, {});
     return {
       points: roomPoints.length,
-      outlets: roomPoints.filter((p) => p?.electricalSymbol?.type === 'outlet').length,
+      outlets: outletPoints.length,
+      outletsBySize,
+      totalOutletSockets: outletPoints.reduce((sum, p) => sum + parseSocketsCountFromNotes(p.notes), 0),
       switches: roomPoints.filter((p) => p?.electricalSymbol?.type === 'switch').length,
       lights: roomPoints.filter((p) => p?.electricalSymbol?.type === 'light').length,
       appliances: projectAppliances
         .filter((item) => item.roomId === selectedRoomId)
         .reduce((sum, item) => sum + Number(item.quantity || 1), 0),
+      doors: allOpenings.filter((o) => o.openingType === 'door').length,
+      windows: allOpenings.filter((o) => o.openingType === 'window').length,
     };
-  }, [projectAppliances, sceneData.points, selectedRoomId]);
+  }, [projectAppliances, sceneData.points, sceneData.walls, selectedRoomId]);
 
   const selectedRoomCalculation = useMemo(() => {
     if (!selectedRoomId || !calculationReport?.roomCalculations) return null;
@@ -2745,7 +2822,56 @@ const FloorPlan3D = () => {
     setRoomCeilingHeightM(roomHeightById[selectedRoom.id] || DEFAULT_ROOM_HEIGHT_M);
   }, [roomHeightById, selectedRoom]);
 
-  const roomPlan = roomPlanData[selectedRoomId] || { plannedOutlets: 0, plannedSwitches: 0, plannedLights: 0, cableReserveM: 0 };
+  // Sync roomLimitsEdit from sceneData when selected room changes
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    const room = sceneData.rooms.find((r) => r.id === selectedRoomId);
+    if (!room) return;
+    setRoomLimitsEdit((prev) => ({
+      ...prev,
+      [selectedRoomId]: {
+        maxSwitches: room.maxSwitches ?? null,
+        maxDoors: room.maxDoors ?? null,
+        maxWindows: room.maxWindows ?? null,
+        maxLights: room.maxLights ?? null,
+      },
+    }));
+  }, [selectedRoomId, sceneData.rooms]);
+
+  const saveRoomLimits = useCallback(async () => {
+    if (!selectedRoomId || !selectedRoom) return;
+    const limits = roomLimitsEdit[selectedRoomId] || {};
+    setSavingRoomLimits(true);
+    try {
+      await roomAPI.update(projectId, selectedRoomId, {
+        name: selectedRoom.name,
+        roomTypeId: selectedRoom.roomTypeId,
+        area: selectedRoom.area,
+        description: selectedRoom.description,
+        positionX: selectedRoom.positionX,
+        positionY: selectedRoom.positionY,
+        width: selectedRoom.width,
+        height: selectedRoom.height,
+        polygonPoints: selectedRoom.polygonPoints,
+        windowCount: selectedRoom.windowCount,
+        socketGroups: selectedRoom.socketGroups,
+        socketsPerGroup: selectedRoom.socketsPerGroup,
+        socketGroupsConfig: selectedRoom.socketGroupsConfig,
+        maxSwitches: limits.maxSwitches != null ? Number(limits.maxSwitches) : null,
+        maxDoors: limits.maxDoors != null ? Number(limits.maxDoors) : null,
+        maxWindows: limits.maxWindows != null ? Number(limits.maxWindows) : null,
+        maxLights: limits.maxLights != null ? Number(limits.maxLights) : null,
+      });
+      addToast('Лимиты комнаты сохранены', 'success');
+      await loadSceneData();
+    } catch (e) {
+      addToast('Не удалось сохранить лимиты комнаты', 'error');
+    } finally {
+      setSavingRoomLimits(false);
+    }
+  }, [selectedRoomId, selectedRoom, roomLimitsEdit, projectId, addToast, loadSceneData]);
+
+  const roomPlan = roomLimitsEdit[selectedRoomId] || { maxSwitches: null, maxDoors: null, maxWindows: null, maxLights: null };
   const getRoomName = useCallback((roomId) => (
     sceneData.rooms.find((room) => room.id === roomId)?.name?.toLowerCase() || ''
   ), [sceneData.rooms]);
@@ -3272,8 +3398,10 @@ const FloorPlan3D = () => {
           validationStages={validationStages}
           roomExistingStats={roomExistingStats}
           selectedRoomCalculation={selectedRoomCalculation}
-          roomPlan={roomPlan}
-          setRoomPlanData={setRoomPlanData}
+          roomLimitsEdit={roomLimitsEdit[selectedRoomId] || {}}
+          setRoomLimitsEdit={(patch) => setRoomLimitsEdit((prev) => ({ ...prev, [selectedRoomId]: { ...(prev[selectedRoomId] || {}), ...patch } }))}
+          saveRoomLimits={saveRoomLimits}
+          savingRoomLimits={savingRoomLimits}
           getRouteModeWarning={getRouteModeWarning}
           undoLastAction={undoLastAction}
           redoLastAction={redoLastAction}
@@ -3281,6 +3409,8 @@ const FloorPlan3D = () => {
           canRedo={canRedo}
           loadRouteToDraft={loadRouteToDraft}
           selectedRouteId={selectedRouteId}
+          outletSocketCount={outletSocketCount}
+          setOutletSocketCount={setOutletSocketCount}
         />
 
         <section className="floor-plan-3d-canvas">

@@ -35,7 +35,13 @@ public class RoomRequest {
     private String polygonPoints; // JSON массив точек для полигона
     
     private Integer windowCount; // Количество окон в помещении
-    
+
+    private Integer maxOutlets;
+    private Integer maxSwitches;
+    private Integer maxDoors;
+    private Integer maxWindows;
+    private Integer maxLights;
+
     @Positive(message = "Socket groups must be positive")
     private Integer socketGroups; // Количество розеточных групп (для обратной совместимости)
     

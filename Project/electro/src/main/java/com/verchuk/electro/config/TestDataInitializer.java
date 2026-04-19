@@ -583,6 +583,40 @@ public class TestDataInitializer implements CommandLineRunner {
 
     private Room createRoom(Project project, RoomType roomType, String name, BigDecimal area,
                            double posX, double posY, double width, double height) {
+        // Определяем лимиты в зависимости от типа комнаты
+        Integer maxOutlets = 5;
+        Integer maxSwitches = 3;
+        Integer maxDoors = 1;
+        Integer maxWindows = 2;
+        Integer maxLights = 2;
+
+        String nameLC = name.toLowerCase(Locale.ROOT);
+        if (nameLC.contains("кухн")) {
+            maxOutlets = 8;
+            maxSwitches = 4;
+            maxDoors = 1;
+            maxWindows = 1;
+            maxLights = 3;
+        } else if (nameLC.contains("ванн") || nameLC.contains("санузел") || nameLC.contains("туалет")) {
+            maxOutlets = 3;
+            maxSwitches = 1;
+            maxDoors = 1;
+            maxWindows = 1;
+            maxLights = 2;
+        } else if (nameLC.contains("прихож")) {
+            maxOutlets = 3;
+            maxSwitches = 2;
+            maxDoors = 2;
+            maxWindows = 1;
+            maxLights = 2;
+        } else if (nameLC.contains("кладов") || nameLC.contains("чердак")) {
+            maxOutlets = 2;
+            maxSwitches = 1;
+            maxDoors = 1;
+            maxWindows = 0;
+            maxLights = 1;
+        }
+
         Room room = Room.builder()
                 .name(name)
                 .area(area)
@@ -596,6 +630,11 @@ public class TestDataInitializer implements CommandLineRunner {
                 .socketGroups(2)
                 .socketsPerGroup(2)
                 .socketGroupsConfig("[{\"socketsCount\":2},{\"socketsCount\":2}]")
+                .maxOutlets(maxOutlets)
+                .maxSwitches(maxSwitches)
+                .maxDoors(maxDoors)
+                .maxWindows(maxWindows)
+                .maxLights(maxLights)
                 .build();
 
         return roomRepository.save(room);

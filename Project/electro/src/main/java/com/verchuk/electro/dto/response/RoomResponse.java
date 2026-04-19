@@ -27,5 +27,10 @@ public class RoomResponse {
     private Integer socketGroups; // Количество розеточных групп (для обратной совместимости)
     private Integer socketsPerGroup; // Количество розеток в каждой группе (для обратной совместимости)
     private String socketGroupsConfig; // JSON массив групп: [{"socketsCount": 2}, {"socketsCount": 3}, ...]
+    private Integer maxOutlets;
+    private Integer maxSwitches;
+    private Integer maxDoors;
+    private Integer maxWindows;
+    private Integer maxLights;
 }
 

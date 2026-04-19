@@ -2,30 +2,44 @@ import * as THREE from 'three';
 
 export const DEFAULT_ROOM_HEIGHT_M = 2.8;
 
-function buildOutletGroup(accentColor) {
+export function parseSocketsCountFromNotes(notes) {
+  if (!notes) return 1;
+  const m = String(notes).match(/sockets:(\d)/);
+  return m ? Math.max(1, Math.min(4, parseInt(m[1], 10))) : 1;
+}
+
+function buildOutletGroup(accentColor, socketsCount = 1) {
   const group = new THREE.Group();
+  const count = Math.max(1, Math.min(4, socketsCount));
+  // Width per socket unit; total plate scales with count
+  const unitW = 0.12;
+  const gap = 0.01;
+  const totalW = unitW * count + gap * (count - 1);
+  const plateH = 0.12;
   const plateMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.7, emissive: 0x888880, emissiveIntensity: 0.4 });
   const borderMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.5, emissive: accentColor, emissiveIntensity: 0.5 });
   const holeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
 
-  const border = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.018), borderMat);
+  const border = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.02, plateH + 0.02, 0.018), borderMat);
   border.position.z = -0.004;
   group.add(border);
 
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.024), plateMat);
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(totalW, plateH, 0.024), plateMat);
   group.add(plate);
 
-  [-0.026, 0.026].forEach((ox) => {
-    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 8), holeMat);
-    pin.rotation.x = Math.PI / 2;
-    pin.position.set(ox, 0.015, 0.001);
-    group.add(pin);
-  });
-
-  const gnd = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.03, 8), holeMat);
-  gnd.rotation.x = Math.PI / 2;
-  gnd.position.set(0, -0.021, 0.001);
-  group.add(gnd);
+  for (let i = 0; i < count; i++) {
+    const ox = -totalW / 2 + unitW / 2 + i * (unitW + gap);
+    [-0.026, 0.026].forEach((dx) => {
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.03, 8), holeMat);
+      pin.rotation.x = Math.PI / 2;
+      pin.position.set(ox + dx, 0.015, 0.001);
+      group.add(pin);
+    });
+    const gnd = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.03, 8), holeMat);
+    gnd.rotation.x = Math.PI / 2;
+    gnd.position.set(ox, -0.021, 0.001);
+    group.add(gnd);
+  }
 
   return group;
 }
@@ -127,15 +141,15 @@ export function isSourcePointByNotes(point) {
 export function buildPointGroup(point) {
   const type = point?.electricalSymbol?.type || '';
   const isSource = isSourcePointByNotes(point);
-  if (type === 'outlet') return buildOutletGroup(0x10b981);
+  if (type === 'outlet') return buildOutletGroup(0x10b981, parseSocketsCountFromNotes(point?.notes));
   if (type === 'switch') return buildSwitchGroup(0x60a5fa);
   if (type === 'light' && !isSource) return buildLightGroup(0xffc857);
   return buildSourceGroup();
 }
 
-export function buildGhostGroup(toolType) {
+export function buildGhostGroup(toolType, socketsCount = 1) {
   let group;
-  if (toolType === 'add-outlet') group = buildOutletGroup(0x34d399);
+  if (toolType === 'add-outlet') group = buildOutletGroup(0x34d399, socketsCount);
   else if (toolType === 'add-switch') group = buildSwitchGroup(0x93c5fd);
   else if (toolType === 'add-light') group = buildLightGroup(0xfde68a);
   else group = buildSourceGroup();
