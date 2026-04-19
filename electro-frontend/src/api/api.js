@@ -33,15 +33,15 @@ api.interceptors.response.use(
     // Если ошибка 401 (Unauthorized) и мы еще не пытались повторить запрос (или это не запрос логина)
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       console.warn('Сессия истекла или токен недействителен. Выход из системы...');
-      
+
       // Очищаем хранилище
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      
+
       // Принудительный редирект на страницу входа
       // Используем window.location, так как axios находится вне контекста React Router
       if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);
@@ -144,11 +144,12 @@ export const savedSpecificationAPI = {
   getAll: (projectId) => api.get(`/designer/projects/${projectId}/saved-specifications`),
   getById: (projectId, specificationId, full = false) => {
     const url = `/designer/projects/${projectId}/saved-specifications/${specificationId}`;
-    return api.get(url, { 
-      params: { full: full ? 'true' : 'false' } 
+    return api.get(url, {
+      params: { full: full ? 'true' : 'false' }
     });
   },
   delete: (projectId, specificationId) => api.delete(`/designer/projects/${projectId}/saved-specifications/${specificationId}`),
+  restore: (projectId, specificationId) => api.post(`/designer/projects/${projectId}/saved-specifications/${specificationId}/restore`),
 };
 
 // Admin API
@@ -159,29 +160,29 @@ export const adminAPI = {
   createUser: (data, roles) => api.post('/admin/users', data, { params: { roles } }),
   updateUser: (id, data, roles) => api.put(`/admin/users/${id}`, data, { params: { roles } }),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
-  
+
   // Appliances
   getAllAppliances: (params = {}) => api.get('/appliances', { params }),
   createAppliance: (data) => api.post('/admin/appliances', data),
   updateAppliance: (id, data) => api.put(`/admin/appliances/${id}`, data),
   deleteAppliance: (id) => api.delete(`/admin/appliances/${id}`),
-  
+
   // Room Types
   getAllRoomTypes: (params = {}) => api.get('/admin/room-types', { params }),
   createRoomType: (data) => api.post('/admin/room-types', data),
   updateRoomType: (id, data) => api.put(`/admin/room-types/${id}`, data),
   deleteRoomType: (id) => api.delete(`/admin/room-types/${id}`),
-  
+
   // Projects
   getAllProjects: (params = {}) => api.get('/admin/projects', { params }),
   getProjectById: (id) => api.get(`/admin/projects/${id}`),
-  
+
   // Project details (admin can access designer endpoints)
   getProjectRooms: (projectId) => api.get(`/designer/projects/${projectId}/rooms`),
   getProjectAppliances: (projectId) => api.get(`/designer/projects/${projectId}/appliances`),
   getProjectCalculation: (projectId) => api.get(`/designer/projects/${projectId}/calculations`),
   getProjectSpecification: (projectId) => api.get(`/designer/projects/${projectId}/specifications`),
-  
+
   // Statistics
   getApplianceStatistics: () => api.get('/admin/statistics/appliances'),
   getManufacturerStatistics: () => api.get('/admin/statistics/manufacturers'),
@@ -212,7 +213,7 @@ export const adminAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  
+
   // Electrical Symbols
   createElectricalSymbol: (data) => api.post('/admin/electrical-symbols', data),
   updateElectricalSymbol: (id, data) => api.put(`/admin/electrical-symbols/${id}`, data),

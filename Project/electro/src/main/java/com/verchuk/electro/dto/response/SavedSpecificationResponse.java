@@ -27,5 +27,6 @@ public class SavedSpecificationResponse {
     // Полные данные для просмотра и сравнения
     private SpecificationResponse specification; // Полная смета со всеми позициями
     private CalculationReportResponse calculation; // Полная расчетная ведомость со всеми данными
+    private ProjectSnapshotResponse projectSnapshot; // Снимок 3D-сцены (комнаты, стены, точки, трассы)
 }
 

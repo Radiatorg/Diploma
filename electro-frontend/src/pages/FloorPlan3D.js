@@ -88,6 +88,7 @@ const FloorPlan3D = () => {
   const [selectedSavedCalcId, setSelectedSavedCalcId] = useState(null);
   const [selectedSavedCalcDetails, setSelectedSavedCalcDetails] = useState(null);
   const [saveCalcName, setSaveCalcName] = useState('');
+  const [viewingSavedSnapshot, setViewingSavedSnapshot] = useState(false);
   const [insideRoomView, setInsideRoomView] = useState(false);
   const [hoveredWallFace, setHoveredWallFace] = useState(null);
   const [cursorContext, setCursorContext] = useState(null);
@@ -2805,11 +2806,71 @@ const FloorPlan3D = () => {
   const openSaved3DCalculation = async (savedId) => {
     try {
       const response = await savedSpecificationAPI.getById(projectId, savedId, true);
+      const data = response.data || {};
       setSelectedSavedCalcId(savedId);
-      setSelectedSavedCalcDetails(response.data || null);
-      addToast('Расчет загружен', 'success');
+      setSelectedSavedCalcDetails(data);
+
+      // Если сохранён снимок 3D-сцены — восстановить его для просмотра
+      const snap = data.projectSnapshot;
+      if (snap) {
+        setSceneData((prev) => ({
+          ...prev,
+          rooms: snap.rooms || prev.rooms,
+          walls: snap.walls || prev.walls,
+          points: snap.electricalPoints || prev.points,
+          routes: snap.routes || prev.routes,
+        }));
+        setStats({
+          rooms: (snap.rooms || []).length,
+          walls: (snap.walls || []).length,
+          points: (snap.electricalPoints || []).length,
+          routes: (snap.routes || []).length,
+        });
+        setViewingSavedSnapshot(true);
+        addToast('Загружен сохранённый снимок сцены (только просмотр)', 'info');
+      } else {
+        addToast('Расчет загружен (снимок сцены отсутствует)', 'info');
+      }
     } catch (e) {
       addToast('Не удалось открыть сохраненный 3D расчет', 'error');
+    }
+  };
+
+  const exitSavedSnapshot = async () => {
+    setSelectedSavedCalcId(null);
+    setSelectedSavedCalcDetails(null);
+    setViewingSavedSnapshot(false);
+    await loadSceneData();
+    addToast('Возвращено текущее состояние сцены', 'success');
+  };
+
+  const restoreFromSavedCalculation = async (savedId) => {
+    try {
+      await savedSpecificationAPI.restore(projectId, savedId);
+      setSelectedSavedCalcId(null);
+      setSelectedSavedCalcDetails(null);
+      setViewingSavedSnapshot(false);
+      await loadSceneData();
+      addToast('Состояние проекта восстановлено из сохранения', 'success');
+    } catch (e) {
+      addToast(e?.response?.data?.message || 'Не удалось восстановить состояние из сохранения', 'error');
+    }
+  };
+
+  const deleteSavedCalculation = async (savedId) => {
+    try {
+      await savedSpecificationAPI.delete(projectId, savedId);
+      if (selectedSavedCalcId === savedId) {
+        setSelectedSavedCalcId(null);
+        setSelectedSavedCalcDetails(null);
+        setViewingSavedSnapshot(false);
+        await loadSceneData();
+      } else {
+        setSaved3DCalculations((prev) => prev.filter((item) => item.id !== savedId));
+      }
+      addToast('Сохранение удалено', 'success');
+    } catch (e) {
+      addToast(e?.response?.data?.message || 'Не удалось удалить сохранение', 'error');
     }
   };
 
@@ -3484,6 +3545,10 @@ const FloorPlan3D = () => {
           selectedRouteId={selectedRouteId}
           outletSocketCount={outletSocketCount}
           setOutletSocketCount={setOutletSocketCount}
+          viewingSavedSnapshot={viewingSavedSnapshot}
+          exitSavedSnapshot={exitSavedSnapshot}
+          restoreFromSavedCalculation={restoreFromSavedCalculation}
+          deleteSavedCalculation={deleteSavedCalculation}
         />
 
         <section className="floor-plan-3d-canvas">

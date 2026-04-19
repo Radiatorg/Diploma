@@ -1,7 +1,64 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DEFAULT_ROOM_HEIGHT_M } from './floorPlan3D/builders3D';
 
 const ROOM_HEIGHT_M = DEFAULT_ROOM_HEIGHT_M;
+
+function SavedCalcModal({ item, mode, onConfirm, onCancel }) {
+  if (!item || !mode) return null;
+  const isRestore = mode === 'restore';
+  return (
+    <div className="floor-plan-3d-modal-backdrop" onClick={onCancel}>
+      <div
+        className="floor-plan-3d-modal"
+        style={{ maxWidth: 420 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ color: isRestore ? '#60a5fa' : '#f87171' }}>
+          {isRestore ? '↺ Загрузить сохранение' : '✕ Удалить сохранение'}
+        </h2>
+        <p style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: '0.5rem' }}>
+          «{item.name}»
+        </p>
+        {item.createdAt && (
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+            Сохранено: {new Date(item.createdAt).toLocaleString('ru-RU')}
+          </p>
+        )}
+        {isRestore ? (
+          <>
+            {item.projectSnapshot && (
+              <p style={{ color: '#86efac', fontSize: '0.85rem', marginTop: '6px' }}>
+                Снимок содержит: {(item.projectSnapshot.rooms || []).length} комнат,{' '}
+                {(item.projectSnapshot.electricalPoints || []).length} точек,{' '}
+                {(item.projectSnapshot.routes || []).length} трасс
+              </p>
+            )}
+            <p style={{ color: '#fbbf24', marginTop: '8px' }}>
+              Текущие стены, точки и трассы будут заменены данными из снимка.
+            </p>
+          </>
+        ) : (
+          <p style={{ color: '#fca5a5', marginTop: '8px' }}>
+            Сохранение будет удалено навсегда. Это действие нельзя отменить.
+          </p>
+        )}
+        <div className="floor-plan-3d-modal-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            style={isRestore ? {} : { background: '#991b1b', borderColor: '#ef4444' }}
+            onClick={onConfirm}
+          >
+            {isRestore ? 'Загрузить' : 'Удалить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function FloorPlan3DSidebar({
   sceneData,
@@ -87,7 +144,14 @@ export default function FloorPlan3DSidebar({
   selectedRouteId,
   outletSocketCount,
   setOutletSocketCount,
+  viewingSavedSnapshot,
+  exitSavedSnapshot,
+  restoreFromSavedCalculation,
+  deleteSavedCalculation,
 }) {
+  const [savedCalcModal, setSavedCalcModal] = useState(null);
+  // savedCalcModal = null | { mode: 'restore'|'delete', item: {...} }
+
   return (
     <aside className="floor-plan-3d-panel">
       <h2>Инструменты</h2>
@@ -216,6 +280,14 @@ export default function FloorPlan3DSidebar({
           </div>
           <div className="room-plan-panel">
             <h3>Сохранения 3D расчетов</h3>
+            {viewingSavedSnapshot && (
+              <div className="floor-plan-3d-tip" style={{ color: '#fbbf24', borderColor: '#92400e', background: '#1c1205' }}>
+                <strong>Просмотр сохранённого снимка.</strong> Редактирование отключено. Нажмите «Вернуться к текущему», чтобы продолжить работу.
+                <button type="button" className="btn-primary" style={{ marginTop: '6px', width: '100%' }} onClick={exitSavedSnapshot}>
+                  Вернуться к текущему
+                </button>
+              </div>
+            )}
             <div className="editor-field">
               <label htmlFor="saveCalcName">Название сохранения</label>
               <input
@@ -224,31 +296,115 @@ export default function FloorPlan3DSidebar({
                 value={saveCalcName}
                 onChange={(e) => setSaveCalcName(e.target.value)}
                 placeholder="Например: Вариант с доп. линией кухни"
+                disabled={viewingSavedSnapshot}
               />
             </div>
-            <button type="button" className="btn-primary" onClick={saveCurrent3DCalculation}>
+            <button type="button" className="btn-primary" onClick={saveCurrent3DCalculation} disabled={viewingSavedSnapshot}>
               Сохранить текущий 3D расчет
             </button>
             <div className="room-list-scroll" style={{ marginTop: '8px' }}>
               {saved3DCalculations.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  type="button"
-                  className={selectedSavedCalcId === item.id ? 'route-item-btn active' : 'route-item-btn'}
-                  onClick={() => openSaved3DCalculation(item.id)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    background: selectedSavedCalcId === item.id ? '#0c1a35' : '#0f1729',
+                    border: `1px solid ${selectedSavedCalcId === item.id ? '#2563eb' : '#1e2d45'}`,
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    marginBottom: '6px',
+                    cursor: 'default',
+                  }}
                 >
-                  #{item.id} {item.name}
-                </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      style={{
+                        flex: 1,
+                        background: 'none',
+                        border: 'none',
+                        color: selectedSavedCalcId === item.id ? '#93c5fd' : '#cbd5e1',
+                        fontWeight: selectedSavedCalcId === item.id ? 600 : 400,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        padding: '0',
+                        fontSize: '0.9rem',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onClick={() => openSaved3DCalculation(item.id)}
+                      title="Просмотреть снимок"
+                    >
+                      {item.name}
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        background: 'none',
+                        border: '1px solid #1d4ed8',
+                        borderRadius: '5px',
+                        color: '#60a5fa',
+                        width: '28px',
+                        height: '28px',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        lineHeight: 1,
+                        flexShrink: 0,
+                      }}
+                      onClick={() => setSavedCalcModal({ mode: 'restore', item })}
+                      title="Загрузить как текущее состояние"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        background: 'none',
+                        border: '1px solid #7f1d1d',
+                        borderRadius: '5px',
+                        color: '#f87171',
+                        width: '28px',
+                        height: '28px',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        lineHeight: 1,
+                        flexShrink: 0,
+                      }}
+                      onClick={() => setSavedCalcModal({ mode: 'delete', item })}
+                      title="Удалить сохранение"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {item.createdAt && (
+                    <span style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '4px' }}>
+                      {new Date(item.createdAt).toLocaleString('ru-RU')}
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
             {selectedSavedCalcDetails && (
               <div className="floor-plan-3d-tip">
                 <div><strong>{selectedSavedCalcDetails.name}</strong></div>
                 <div>Сохранено: {new Date(selectedSavedCalcDetails.createdAt).toLocaleString('ru-RU')}</div>
+                {selectedSavedCalcDetails.totalPower != null && (
+                  <div>Мощность: {Number(selectedSavedCalcDetails.totalPower || 0).toFixed(0)} Вт</div>
+                )}
+                {selectedSavedCalcDetails.totalCost != null && (
+                  <div>Стоимость: {Number(selectedSavedCalcDetails.totalCost || 0).toFixed(2)} BYN</div>
+                )}
                 {selectedSavedCalcDetails.calculation && (
-                  <div>
-                    Мощность: {Number(selectedSavedCalcDetails.calculation.totalPowerConsumption || 0).toFixed(0)} Вт,
-                    кабель: {Number(selectedSavedCalcDetails.calculation.cableLength || 0).toFixed(2)} м
+                  <div>Кабель: {Number(selectedSavedCalcDetails.calculation.cableLength || 0).toFixed(2)} м</div>
+                )}
+                {selectedSavedCalcDetails.projectSnapshot && (
+                  <div style={{ marginTop: '4px', color: '#86efac' }}>
+                    Снимок: {(selectedSavedCalcDetails.projectSnapshot.rooms || []).length} комнат,{' '}
+                    {(selectedSavedCalcDetails.projectSnapshot.electricalPoints || []).length} точек,{' '}
+                    {(selectedSavedCalcDetails.projectSnapshot.routes || []).length} трасс,{' '}
+                    {(selectedSavedCalcDetails.projectSnapshot.walls || []).length} стен
                   </div>
                 )}
               </div>
@@ -776,6 +932,16 @@ export default function FloorPlan3DSidebar({
           </div>
         </>
       )}
+      <SavedCalcModal
+        item={savedCalcModal?.item}
+        mode={savedCalcModal?.mode}
+        onCancel={() => setSavedCalcModal(null)}
+        onConfirm={() => {
+          if (savedCalcModal?.mode === 'restore') restoreFromSavedCalculation(savedCalcModal.item.id);
+          else if (savedCalcModal?.mode === 'delete') deleteSavedCalculation(savedCalcModal.item.id);
+          setSavedCalcModal(null);
+        }}
+      />
     </aside>
   );
 }

@@ -75,5 +75,20 @@ public class SavedSpecificationController {
         savedSpecificationService.deleteSavedSpecification(projectId, specificationId);
         return ResponseEntity.ok(ApiResponse.success("Saved specification deleted successfully"));
     }
+
+    @PostMapping("/{specificationId}/restore")
+    public ResponseEntity<ApiResponse> restoreFromSnapshot(
+            @PathVariable Long projectId,
+            @PathVariable Long specificationId) {
+        try {
+            savedSpecificationService.restoreFromSnapshot(projectId, specificationId);
+            return ResponseEntity.ok(ApiResponse.success("Scene restored from snapshot successfully"));
+        } catch (com.verchuk.electro.exception.ResourceNotFoundException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(ApiResponse.error("Failed to restore: " + e.getMessage()));
+        }
+    }
 }
 

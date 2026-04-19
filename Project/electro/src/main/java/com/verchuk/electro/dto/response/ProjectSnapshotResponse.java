@@ -16,6 +16,7 @@ public class ProjectSnapshotResponse {
     private List<ProjectApplianceResponse> appliances;
     private List<ElectricalPointResponse> electricalPoints;
     private List<WallResponse> walls;
+    private List<CableRunResponse> routes;
     private FloorPlanResponse floorPlan;
 }
 
